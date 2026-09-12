@@ -39,6 +39,7 @@ function emptyDb() {
     rentEntries: [],
     electricityEntries: [],
     passwordResetOtps: [],
+    authorities: [],
   };
 }
 
@@ -108,8 +109,15 @@ function normalizeSmsNumber(value) {
   return raw;
 }
 async function sendPasswordResetOtp(user, otp) {
+  // Route strictly by what the account's contact actually is, rather than by
+  // which provider happens to have variables set. Previously an email-contact
+  // account could fall through to the Twilio branch and try to "text" the
+  // email address, which always failed.
   const email = isEmail(user.email) ? user.email : (isEmail(user.contact) ? user.contact : '');
-  if (email && process.env.RESEND_API_KEY && process.env.OTP_FROM_EMAIL) {
+  if (email) {
+    if (!process.env.RESEND_API_KEY || !process.env.OTP_FROM_EMAIL) {
+      throw new Error('Email delivery is not configured. Add RESEND_API_KEY and OTP_FROM_EMAIL in Railway.');
+    }
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
@@ -124,7 +132,10 @@ async function sendPasswordResetOtp(user, otp) {
     return 'email';
   }
   const phone = normalizeSmsNumber(user.contact);
-  if (phone && process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM_NUMBER) {
+  if (/^\+\d{8,15}$/.test(phone)) {
+    if (!process.env.TWILIO_ACCOUNT_SID || !process.env.TWILIO_AUTH_TOKEN || !process.env.TWILIO_FROM_NUMBER) {
+      throw new Error('SMS delivery is not configured. Add Twilio variables in Railway.');
+    }
     const authHeader = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString('base64');
     const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`, {
       method: 'POST',
@@ -138,7 +149,7 @@ async function sendPasswordResetOtp(user, otp) {
     if (!response.ok) throw new Error('Unable to send the reset SMS');
     return 'sms';
   }
-  throw new Error('Password reset delivery is not configured. Add Resend email or Twilio SMS variables in Railway.');
+  throw new Error('Password reset delivery is not configured for this account.');
 }
 function auth(req, res, next) {
   const token = (req.headers.authorization || '').replace('Bearer ', '');
@@ -484,6 +495,68 @@ app.delete("/api/rooms/:id", (req, res) => {
   res.json({ ok: true });
 });
 
+// Link a room to a meter ID + billing authority. Once linked, electricity bills
+// for this room are entered as a direct amount from that authority instead of
+// being calculated from meter readings. Past bill entries keep whatever mode
+// they were recorded under, even if the room's meter is later unlinked or
+// relinked to a different authority.
+app.put("/api/rooms/:id/meter", (req, res) => {
+  const db = loadDb();
+  db.authorities = db.authorities || [];
+  const room = db.rooms.find((r) => r.id === req.params.id);
+  if (!room) return notFound(res, "Room");
+  const meterId = String(req.body.meterId || "").trim();
+  const authority = db.authorities.find((a) => a.id === req.body.authorityId);
+  if (!meterId) return res.status(400).json({ error: "Enter a meter ID." });
+  if (!authority) return res.status(400).json({ error: "Choose a valid billing authority." });
+  room.meterId = meterId;
+  room.authorityId = authority.id;
+  saveDb(db);
+  res.json(room);
+});
+
+app.delete("/api/rooms/:id/meter", (req, res) => {
+  const db = loadDb();
+  const room = db.rooms.find((r) => r.id === req.params.id);
+  if (!room) return notFound(res, "Room");
+  room.meterId = "";
+  room.authorityId = null;
+  saveDb(db);
+  res.json(room);
+});
+
+// ---------- Billing authorities (electricity boards, utility companies, etc.) ----------
+// A small owner-managed list the meter-linking dropdown is populated from.
+
+app.get("/api/authorities", (req, res) => {
+  const db = loadDb();
+  res.json((db.authorities || []).slice().sort((a, b) => a.name.localeCompare(b.name)));
+});
+
+app.post("/api/authorities", (req, res) => {
+  const db = loadDb();
+  db.authorities = db.authorities || [];
+  const name = String(req.body.name || "").trim();
+  if (!name) return res.status(400).json({ error: "Enter a name for the authority." });
+  const existing = db.authorities.find((a) => a.name.toLowerCase() === name.toLowerCase());
+  if (existing) return res.status(200).json(existing);
+  const authority = { id: id(), name, createdAt: new Date().toISOString() };
+  db.authorities.push(authority);
+  saveDb(db);
+  res.status(201).json(authority);
+});
+
+app.delete("/api/authorities/:id", (req, res) => {
+  const db = loadDb();
+  db.authorities = db.authorities || [];
+  if (db.rooms.some((r) => r.authorityId === req.params.id)) {
+    return res.status(409).json({ error: "This authority is linked to a room. Unlink its meter first." });
+  }
+  db.authorities = db.authorities.filter((a) => a.id !== req.params.id);
+  saveDb(db);
+  res.json({ ok: true });
+});
+
 // ---------- Tenants ----------
 
 app.get("/api/tenants", (req, res) => {
@@ -643,32 +716,55 @@ app.get("/api/electricity", (req, res) => {
 
 app.post("/api/electricity", (req, res) => {
   const db = loadDb();
+  db.authorities = db.authorities || [];
   const {
     roomId, tenantId, month, year,
-    prevReading, currReading, ratePerUnit,
+    prevReading, currReading, ratePerUnit, amount,
     paidDate, notes,
   } = req.body;
   if (!roomId || !month || !year) return res.status(400).json({ error: "roomId, month and year are required" });
-  const prev = Number(prevReading) || 0;
-  const curr = Number(currReading) || 0;
-  const rate = Number(ratePerUnit) || 0;
-  const units = Math.max(curr - prev, 0);
+  const room = db.rooms.find((candidate) => candidate.id === roomId);
+  if (!room) return notFound(res, "Room");
   const entry = {
     id: id(),
     roomId,
     tenantId: tenantId || null,
     month: Number(month),
     year: Number(year),
-    prevReading: prev,
-    currReading: curr,
-    unitsConsumed: units,
-    ratePerUnit: rate,
-    amount: Math.round(units * rate * 100) / 100,
     paidDate: paidDate || "",
-    status: paidDate ? "paid" : "due",
     notes: notes || "",
     createdAt: new Date().toISOString(),
   };
+  // A room linked to a meter ID + billing authority gets its bill amount entered
+  // directly (the authority already did the metering). Otherwise, fall back to
+  // the original previous/current-reading calculation.
+  if (room.meterId && room.authorityId) {
+    const authority = db.authorities.find((a) => a.id === room.authorityId);
+    Object.assign(entry, {
+      billingMode: "authority",
+      meterId: room.meterId,
+      authorityId: room.authorityId,
+      authorityName: authority ? authority.name : "Unknown authority",
+      prevReading: 0,
+      currReading: 0,
+      unitsConsumed: 0,
+      ratePerUnit: 0,
+      amount: Math.round((Number(amount) || 0) * 100) / 100,
+    });
+  } else {
+    const prev = Number(prevReading) || 0;
+    const curr = Number(currReading) || 0;
+    const rate = Number(ratePerUnit) || 0;
+    Object.assign(entry, {
+      billingMode: "meter",
+      prevReading: prev,
+      currReading: curr,
+      unitsConsumed: Math.max(curr - prev, 0),
+      ratePerUnit: rate,
+      amount: Math.round(Math.max(curr - prev, 0) * rate * 100) / 100,
+    });
+  }
+  entry.status = entry.paidDate ? "paid" : "due";
   db.electricityEntries.push(entry);
   saveDb(db);
   res.status(201).json(entry);
@@ -678,12 +774,23 @@ app.put("/api/electricity/:id", (req, res) => {
   const db = loadDb();
   const entry = db.electricityEntries.find((e) => e.id === req.params.id);
   if (!entry) return notFound(res, "Electricity entry");
-  Object.assign(entry, req.body, { id: entry.id });
-  entry.prevReading = Number(entry.prevReading) || 0;
-  entry.currReading = Number(entry.currReading) || 0;
-  entry.ratePerUnit = Number(entry.ratePerUnit) || 0;
-  entry.unitsConsumed = Math.max(entry.currReading - entry.prevReading, 0);
-  entry.amount = Math.round(entry.unitsConsumed * entry.ratePerUnit * 100) / 100;
+  if (entry.billingMode === "authority") {
+    // Authority-billed entries only ever take a direct amount — never recompute
+    // from readings, since this entry never had any.
+    if (req.body.month !== undefined) entry.month = Number(req.body.month);
+    if (req.body.year !== undefined) entry.year = Number(req.body.year);
+    if (req.body.amount !== undefined) entry.amount = Math.round((Number(req.body.amount) || 0) * 100) / 100;
+    if (req.body.paidDate !== undefined) entry.paidDate = req.body.paidDate || "";
+    if (req.body.notes !== undefined) entry.notes = req.body.notes || "";
+    if (req.body.tenantId !== undefined) entry.tenantId = req.body.tenantId || null;
+  } else {
+    Object.assign(entry, req.body, { id: entry.id });
+    entry.prevReading = Number(entry.prevReading) || 0;
+    entry.currReading = Number(entry.currReading) || 0;
+    entry.ratePerUnit = Number(entry.ratePerUnit) || 0;
+    entry.unitsConsumed = Math.max(entry.currReading - entry.prevReading, 0);
+    entry.amount = Math.round(entry.unitsConsumed * entry.ratePerUnit * 100) / 100;
+  }
   entry.status = entry.paidDate ? "paid" : "due";
   saveDb(db);
   res.json(entry);
