@@ -1,7 +1,7 @@
 FROM node:22-alpine
 RUN apk add --no-cache unzip
 WORKDIR /app
-COPY rent-ledger-source.zip /tmp/rent-ledger-source.zip
+COPY rent-ledger-source /tmp/rent-ledger-source
 RUN unzip -q /tmp/rent-ledger-source.zip -d /app && npm ci --omit=dev && mkdir -p /data
 ENV NODE_ENV=production
 ENV PORT=8080
