@@ -38,6 +38,7 @@ function emptyDb() {
     tenants: [],
     rentEntries: [],
     electricityEntries: [],
+    gasEntries: [],
     passwordResetOtps: [],
     authorities: [],
   };
@@ -271,7 +272,8 @@ app.get('/api/tenant/portal', auth, (req, res) => {
   const building = db.buildings.find(b => b.id === room?.buildingId);
   const rent = db.rentEntries.filter(e => e.roomId === room.id && e.tenantId === tenant.id).sort((a,b) => b.year-a.year || b.month-a.month);
   const electricity = db.electricityEntries.filter(e => e.roomId === room.id && e.tenantId === tenant.id).sort((a,b) => b.year-a.year || b.month-a.month);
-  res.json({ tenant: { name: tenant.name }, room: { label: room.label, floorNumber: room.floorNumber, monthlyRent: room.monthlyRent }, building: { name: building?.name || '' }, rent, electricity });
+  const gas = (db.gasEntries || []).filter(e => e.roomId === room.id && e.tenantId === tenant.id).sort((a,b) => b.year-a.year || b.month-a.month);
+  res.json({ tenant: { name: tenant.name }, room: { label: room.label, floorNumber: room.floorNumber, monthlyRent: room.monthlyRent, gasMeterId: room.gasMeterId || '', gasAuthorityId: room.gasAuthorityId || null }, building: { name: building?.name || '' }, rent, electricity, gas });
 });
 
 function uploadTenantReceipt(entryCollection) {
@@ -301,10 +303,11 @@ function uploadTenantReceipt(entryCollection) {
 
 app.post('/api/tenant/rent/:id/receipt', auth, uploadTenantReceipt('rentEntries'));
 app.post('/api/tenant/electricity/:id/receipt', auth, uploadTenantReceipt('electricityEntries'));
+app.post('/api/tenant/gas/:id/receipt', auth, uploadTenantReceipt('gasEntries'));
 
 app.get('/api/receipts/:receiptId', auth, (req, res) => {
   const db = loadDb();
-  const entry = [...db.rentEntries, ...db.electricityEntries].find((candidate) => candidate.receipt?.id === req.params.receiptId);
+  const entry = [...db.rentEntries, ...db.electricityEntries, ...(db.gasEntries || [])].find((candidate) => candidate.receipt?.id === req.params.receiptId);
   if (!entry || (req.user.role === 'tenant' && entry.tenantId !== req.user.tenantId)) return res.status(404).json({ error: 'Receipt not found' });
   if (req.user.role !== 'owner' && req.user.role !== 'tenant') return res.status(403).json({ error: 'Access denied' });
   const receipt = entry.receipt;
@@ -411,11 +414,13 @@ app.delete("/api/buildings/:id/floors/:floorNumber", (req, res) => {
   const tenantIds = db.tenants.filter((tenant) => roomIds.includes(tenant.roomId)).map((tenant) => tenant.id);
   removeEntryReceipts(db.rentEntries.filter((entry) => roomIds.includes(entry.roomId)));
   removeEntryReceipts(db.electricityEntries.filter((entry) => roomIds.includes(entry.roomId)));
+  removeEntryReceipts((db.gasEntries || []).filter((entry) => roomIds.includes(entry.roomId)));
   db.rooms = db.rooms.filter((room) => !roomIds.includes(room.id));
   db.tenants = db.tenants.filter((tenant) => !roomIds.includes(tenant.roomId));
   removeTenantAccounts(db, tenantIds);
   db.rentEntries = db.rentEntries.filter((entry) => !roomIds.includes(entry.roomId));
   db.electricityEntries = db.electricityEntries.filter((entry) => !roomIds.includes(entry.roomId));
+  db.gasEntries = (db.gasEntries || []).filter((entry) => !roomIds.includes(entry.roomId));
   saveDb(db);
   res.json({ ok: true, floorNumber, roomsDeleted: roomIds.length });
 });
@@ -426,11 +431,13 @@ app.delete("/api/buildings/:id", (req, res) => {
   const tenantIds = db.tenants.filter((t) => roomIds.includes(t.roomId)).map((t) => t.id);
   removeEntryReceipts(db.rentEntries.filter((entry) => roomIds.includes(entry.roomId)));
   removeEntryReceipts(db.electricityEntries.filter((entry) => roomIds.includes(entry.roomId)));
+  removeEntryReceipts((db.gasEntries || []).filter((entry) => roomIds.includes(entry.roomId)));
   db.rooms = db.rooms.filter((r) => r.buildingId !== req.params.id);
   db.tenants = db.tenants.filter((t) => !roomIds.includes(t.roomId));
   removeTenantAccounts(db, tenantIds);
   db.rentEntries = db.rentEntries.filter((e) => !roomIds.includes(e.roomId));
   db.electricityEntries = db.electricityEntries.filter((e) => !roomIds.includes(e.roomId));
+  db.gasEntries = (db.gasEntries || []).filter((e) => !roomIds.includes(e.roomId));
   db.buildings = db.buildings.filter((b) => b.id !== req.params.id);
   saveDb(db);
   res.json({ ok: true });
@@ -486,21 +493,25 @@ app.delete("/api/rooms/:id", (req, res) => {
   const tenantIds = db.tenants.filter((t) => t.roomId === req.params.id).map((t) => t.id);
   removeEntryReceipts(db.rentEntries.filter((entry) => entry.roomId === req.params.id));
   removeEntryReceipts(db.electricityEntries.filter((entry) => entry.roomId === req.params.id));
+  removeEntryReceipts((db.gasEntries || []).filter((entry) => entry.roomId === req.params.id));
   db.tenants = db.tenants.filter((t) => t.roomId !== req.params.id);
   removeTenantAccounts(db, tenantIds);
   db.rentEntries = db.rentEntries.filter((e) => e.roomId !== req.params.id);
   db.electricityEntries = db.electricityEntries.filter((e) => e.roomId !== req.params.id);
+  db.gasEntries = (db.gasEntries || []).filter((e) => e.roomId !== req.params.id);
   db.rooms = db.rooms.filter((r) => r.id !== req.params.id);
   saveDb(db);
   res.json({ ok: true });
 });
 
-// Link a room to a meter ID + billing authority. Once linked, electricity bills
-// for this room are entered as a direct amount from that authority instead of
-// being calculated from meter readings. Past bill entries keep whatever mode
-// they were recorded under, even if the room's meter is later unlinked or
-// relinked to a different authority.
-app.put("/api/rooms/:id/meter", (req, res) => {
+// Link a room to a gas meter ID + billing authority (gas board / supplier). Once
+// linked, gas bills for this room are entered by the owner as the amount the
+// authority is showing as due for that meter — the app has no live/API access
+// into any gas provider's own billing system, so this is an owner-entered
+// figure, not an automatic fetch. Past bill entries keep whatever meter/
+// authority they were recorded under, even if the room's meter is later
+// unlinked or relinked to a different authority.
+app.put("/api/rooms/:id/gas-meter", (req, res) => {
   const db = loadDb();
   db.authorities = db.authorities || [];
   const room = db.rooms.find((r) => r.id === req.params.id);
@@ -509,24 +520,24 @@ app.put("/api/rooms/:id/meter", (req, res) => {
   const authority = db.authorities.find((a) => a.id === req.body.authorityId);
   if (!meterId) return res.status(400).json({ error: "Enter a meter ID." });
   if (!authority) return res.status(400).json({ error: "Choose a valid billing authority." });
-  room.meterId = meterId;
-  room.authorityId = authority.id;
+  room.gasMeterId = meterId;
+  room.gasAuthorityId = authority.id;
   saveDb(db);
   res.json(room);
 });
 
-app.delete("/api/rooms/:id/meter", (req, res) => {
+app.delete("/api/rooms/:id/gas-meter", (req, res) => {
   const db = loadDb();
   const room = db.rooms.find((r) => r.id === req.params.id);
   if (!room) return notFound(res, "Room");
-  room.meterId = "";
-  room.authorityId = null;
+  room.gasMeterId = "";
+  room.gasAuthorityId = null;
   saveDb(db);
   res.json(room);
 });
 
-// ---------- Billing authorities (electricity boards, utility companies, etc.) ----------
-// A small owner-managed list the meter-linking dropdown is populated from.
+// ---------- Billing authorities (gas boards, utility companies, etc.) ----------
+// A small owner-managed list the gas-meter-linking dropdown is populated from.
 
 app.get("/api/authorities", (req, res) => {
   const db = loadDb();
@@ -549,7 +560,7 @@ app.post("/api/authorities", (req, res) => {
 app.delete("/api/authorities/:id", (req, res) => {
   const db = loadDb();
   db.authorities = db.authorities || [];
-  if (db.rooms.some((r) => r.authorityId === req.params.id)) {
+  if (db.rooms.some((r) => r.gasAuthorityId === req.params.id)) {
     return res.status(409).json({ error: "This authority is linked to a room. Unlink its meter first." });
   }
   db.authorities = db.authorities.filter((a) => a.id !== req.params.id);
@@ -632,6 +643,7 @@ app.delete("/api/tenants/:id", (req, res) => {
   // Keep financial history but detach it from the now-deleted personal record.
   db.rentEntries.forEach((entry) => { if (entry.tenantId === tenant.id) entry.tenantId = null; });
   db.electricityEntries.forEach((entry) => { if (entry.tenantId === tenant.id) entry.tenantId = null; });
+  (db.gasEntries || []).forEach((entry) => { if (entry.tenantId === tenant.id) entry.tenantId = null; });
   refreshRoomStatus(db, tenant.roomId);
   saveDb(db);
   res.json({ ok: true });
@@ -716,54 +728,32 @@ app.get("/api/electricity", (req, res) => {
 
 app.post("/api/electricity", (req, res) => {
   const db = loadDb();
-  db.authorities = db.authorities || [];
   const {
     roomId, tenantId, month, year,
-    prevReading, currReading, ratePerUnit, amount,
+    prevReading, currReading, ratePerUnit,
     paidDate, notes,
   } = req.body;
   if (!roomId || !month || !year) return res.status(400).json({ error: "roomId, month and year are required" });
   const room = db.rooms.find((candidate) => candidate.id === roomId);
   if (!room) return notFound(res, "Room");
+  const prev = Number(prevReading) || 0;
+  const curr = Number(currReading) || 0;
+  const rate = Number(ratePerUnit) || 0;
   const entry = {
     id: id(),
     roomId,
     tenantId: tenantId || null,
     month: Number(month),
     year: Number(year),
+    prevReading: prev,
+    currReading: curr,
+    unitsConsumed: Math.max(curr - prev, 0),
+    ratePerUnit: rate,
+    amount: Math.round(Math.max(curr - prev, 0) * rate * 100) / 100,
     paidDate: paidDate || "",
     notes: notes || "",
     createdAt: new Date().toISOString(),
   };
-  // A room linked to a meter ID + billing authority gets its bill amount entered
-  // directly (the authority already did the metering). Otherwise, fall back to
-  // the original previous/current-reading calculation.
-  if (room.meterId && room.authorityId) {
-    const authority = db.authorities.find((a) => a.id === room.authorityId);
-    Object.assign(entry, {
-      billingMode: "authority",
-      meterId: room.meterId,
-      authorityId: room.authorityId,
-      authorityName: authority ? authority.name : "Unknown authority",
-      prevReading: 0,
-      currReading: 0,
-      unitsConsumed: 0,
-      ratePerUnit: 0,
-      amount: Math.round((Number(amount) || 0) * 100) / 100,
-    });
-  } else {
-    const prev = Number(prevReading) || 0;
-    const curr = Number(currReading) || 0;
-    const rate = Number(ratePerUnit) || 0;
-    Object.assign(entry, {
-      billingMode: "meter",
-      prevReading: prev,
-      currReading: curr,
-      unitsConsumed: Math.max(curr - prev, 0),
-      ratePerUnit: rate,
-      amount: Math.round(Math.max(curr - prev, 0) * rate * 100) / 100,
-    });
-  }
   entry.status = entry.paidDate ? "paid" : "due";
   db.electricityEntries.push(entry);
   saveDb(db);
@@ -774,23 +764,12 @@ app.put("/api/electricity/:id", (req, res) => {
   const db = loadDb();
   const entry = db.electricityEntries.find((e) => e.id === req.params.id);
   if (!entry) return notFound(res, "Electricity entry");
-  if (entry.billingMode === "authority") {
-    // Authority-billed entries only ever take a direct amount — never recompute
-    // from readings, since this entry never had any.
-    if (req.body.month !== undefined) entry.month = Number(req.body.month);
-    if (req.body.year !== undefined) entry.year = Number(req.body.year);
-    if (req.body.amount !== undefined) entry.amount = Math.round((Number(req.body.amount) || 0) * 100) / 100;
-    if (req.body.paidDate !== undefined) entry.paidDate = req.body.paidDate || "";
-    if (req.body.notes !== undefined) entry.notes = req.body.notes || "";
-    if (req.body.tenantId !== undefined) entry.tenantId = req.body.tenantId || null;
-  } else {
-    Object.assign(entry, req.body, { id: entry.id });
-    entry.prevReading = Number(entry.prevReading) || 0;
-    entry.currReading = Number(entry.currReading) || 0;
-    entry.ratePerUnit = Number(entry.ratePerUnit) || 0;
-    entry.unitsConsumed = Math.max(entry.currReading - entry.prevReading, 0);
-    entry.amount = Math.round(entry.unitsConsumed * entry.ratePerUnit * 100) / 100;
-  }
+  Object.assign(entry, req.body, { id: entry.id });
+  entry.prevReading = Number(entry.prevReading) || 0;
+  entry.currReading = Number(entry.currReading) || 0;
+  entry.ratePerUnit = Number(entry.ratePerUnit) || 0;
+  entry.unitsConsumed = Math.max(entry.currReading - entry.prevReading, 0);
+  entry.amount = Math.round(entry.unitsConsumed * entry.ratePerUnit * 100) / 100;
   entry.status = entry.paidDate ? "paid" : "due";
   saveDb(db);
   res.json(entry);
@@ -801,6 +780,83 @@ app.delete("/api/electricity/:id", (req, res) => {
   const entry = db.electricityEntries.find((e) => e.id === req.params.id);
   removeReceiptFile(entry?.receipt);
   db.electricityEntries = db.electricityEntries.filter((e) => e.id !== req.params.id);
+  saveDb(db);
+  res.json({ ok: true });
+});
+
+// ---------- Gas entries ----------
+// Gas is always billed through a linked meter ID + authority (gas board /
+// supplier) — there's no meter-reading mode here. The "amount" on each entry
+// is the due amount the owner read off that authority's own bill/portal for
+// this meter; the app has no official API access into any gas provider's
+// billing system, so this is entered by the owner, not fetched automatically.
+
+app.get("/api/gas", (req, res) => {
+  const db = loadDb();
+  let entries = db.gasEntries || [];
+  if (req.query.roomId) entries = entries.filter((e) => e.roomId === req.query.roomId);
+  if (req.query.tenantId) entries = entries.filter((e) => e.tenantId === req.query.tenantId);
+  if (req.query.buildingId) {
+    const roomIds = db.rooms.filter((r) => r.buildingId === req.query.buildingId).map((r) => r.id);
+    entries = entries.filter((e) => roomIds.includes(e.roomId));
+  }
+  res.json(entries);
+});
+
+app.post("/api/gas", (req, res) => {
+  const db = loadDb();
+  db.authorities = db.authorities || [];
+  db.gasEntries = db.gasEntries || [];
+  const { roomId, tenantId, month, year, amount, paidDate, notes } = req.body;
+  if (!roomId || !month || !year) return res.status(400).json({ error: "roomId, month and year are required" });
+  const room = db.rooms.find((candidate) => candidate.id === roomId);
+  if (!room) return notFound(res, "Room");
+  if (!room.gasMeterId || !room.gasAuthorityId) {
+    return res.status(400).json({ error: "Link this room to a gas meter ID and billing authority first." });
+  }
+  const authority = db.authorities.find((a) => a.id === room.gasAuthorityId);
+  const entry = {
+    id: id(),
+    roomId,
+    tenantId: tenantId || null,
+    month: Number(month),
+    year: Number(year),
+    meterId: room.gasMeterId,
+    authorityId: room.gasAuthorityId,
+    authorityName: authority ? authority.name : "Unknown authority",
+    amount: Math.round((Number(amount) || 0) * 100) / 100,
+    paidDate: paidDate || "",
+    notes: notes || "",
+    createdAt: new Date().toISOString(),
+  };
+  entry.status = entry.paidDate ? "paid" : "due";
+  db.gasEntries.push(entry);
+  saveDb(db);
+  res.status(201).json(entry);
+});
+
+app.put("/api/gas/:id", (req, res) => {
+  const db = loadDb();
+  db.gasEntries = db.gasEntries || [];
+  const entry = db.gasEntries.find((e) => e.id === req.params.id);
+  if (!entry) return notFound(res, "Gas entry");
+  if (req.body.month !== undefined) entry.month = Number(req.body.month);
+  if (req.body.year !== undefined) entry.year = Number(req.body.year);
+  if (req.body.amount !== undefined) entry.amount = Math.round((Number(req.body.amount) || 0) * 100) / 100;
+  if (req.body.paidDate !== undefined) entry.paidDate = req.body.paidDate || "";
+  if (req.body.notes !== undefined) entry.notes = req.body.notes || "";
+  if (req.body.tenantId !== undefined) entry.tenantId = req.body.tenantId || null;
+  entry.status = entry.paidDate ? "paid" : "due";
+  saveDb(db);
+  res.json(entry);
+});
+
+app.delete("/api/gas/:id", (req, res) => {
+  const db = loadDb();
+  db.gasEntries = db.gasEntries || [];
+  const entry = db.gasEntries.find((e) => e.id === req.params.id);
+  removeReceiptFile(entry?.receipt);
+  db.gasEntries = db.gasEntries.filter((e) => e.id !== req.params.id);
   saveDb(db);
   res.json({ ok: true });
 });
@@ -827,8 +883,13 @@ app.get("/api/dashboard", (req, res) => {
   const elecPending = elecThisMonth.filter((e) => e.status !== "paid").reduce((s, e) => s + e.amount, 0);
   const elecCollected = elecThisMonth.filter((e) => e.status === "paid").reduce((s, e) => s + e.amount, 0);
 
+  const gasThisMonth = (db.gasEntries || []).filter((e) => e.month === month && e.year === year);
+  const gasPending = gasThisMonth.filter((e) => e.status !== "paid").reduce((s, e) => s + e.amount, 0);
+  const gasCollected = gasThisMonth.filter((e) => e.status === "paid").reduce((s, e) => s + e.amount, 0);
+
   const allDueRent = db.rentEntries.filter((e) => e.status !== "paid" && !electricityOnlyRoomIds.has(e.roomId)).length;
   const allDueElec = db.electricityEntries.filter((e) => e.status !== "paid").length;
+  const allDueGas = (db.gasEntries || []).filter((e) => e.status !== "paid").length;
 
   res.json({
     totalBuildings,
@@ -841,8 +902,11 @@ app.get("/api/dashboard", (req, res) => {
     rentPending,
     elecCollected,
     elecPending,
+    gasCollected,
+    gasPending,
     outstandingRentEntries: allDueRent,
     outstandingElectricityEntries: allDueElec,
+    outstandingGasEntries: allDueGas,
   });
 });
 
@@ -858,18 +922,17 @@ app.get(/^\/(?!api\/).*/, (req, res) => {
 // insensitive), so it never duplicates or touches authorities already added
 // or renamed by the owner.
 const DEFAULT_AUTHORITIES = [
-  "Delhi Electricity Regulatory Commission",
-  "Delhi Transco Limited",
-  "BRPL",
-  "BYPL",
-  "TPDDL",
-  "IPGCL",
-  "PPCL",
-  "Uttar Pradesh Rajya Vidyut Utpadan Nigam (UPRVUN)",
-  "Uttar Pradesh Rajya Vidyut Utpadan Nigam Limited (UPRVUNL)",
   "Uttar Pradesh Power Corporation Limited (UPPCL)",
-  "UP Power Transmission Corporation Limited (UPPTCL)",
-  "UP Jal Vidyut Nigam Limited (UPJVNL)",
+  "Noida Power Company Limited (NPCL)",
+  "Maharashtra State Electricity Distribution Company Limited (MSEDCL / Mahavitran)",
+  "Tata Power Delhi Distribution Limited (TPDDL)",
+  "BSES Rajdhani Power Limited (BRPL)",
+  "BSES Yamuna Power Limited (BYPL)",
+  "Punjab State Power Corporation Limited (PSPCL)",
+  "Dakshin Haryana Bijli Vitran Nigam (DHBVN)",
+  "Uttar Haryana Bijli Vitran Nigam (UHBVN)",
+  "Kerala State Electricity Board Limited (KSEBL)",
+  "Bangalore Electricity Supply Company Limited (BESCOM)",
 ];
 
 function seedDefaultAuthorities() {
