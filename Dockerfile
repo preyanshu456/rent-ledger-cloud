@@ -3,7 +3,7 @@ WORKDIR /app
 
 # Install dependencies first (better layer caching)
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # Copy the rest of the repo as-is — whatever is committed to GitHub
 # is exactly what ends up in the image, no zip step involved.
