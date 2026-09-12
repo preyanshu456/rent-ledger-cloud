@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "Rent Ledger",
+  "short_name": "Rent Ledger",
+  "description": "Secure rent, electricity and tenant management.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#edf7f7",
+  "theme_color": "#0b5968",
+  "icons": [
+    {
+      "src": "/assets/rent-ledger-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
