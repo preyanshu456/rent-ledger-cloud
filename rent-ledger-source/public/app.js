@@ -61,7 +61,7 @@ async function requestAppInstall() {
 function apiBase() { return isMobileApp ? (localStorage.getItem('rentLedgerApiBase') || '') : ''; }
 function apiUrl(url) { return apiBase() ? apiBase().replace(/\/$/, '') + url : url; }
 
-const cache = { buildings: [], rooms: [], tenants: [], authorities: [], dashboard: null, rent: [], electricity: [], buildingRent: [], profile: null, tenantPortal: null, tenantProfile: null, coreLoadedAt: 0, tenantLoadedAt: 0 };
+const cache = { buildings: [], rooms: [], tenants: [], authorities: [], dashboard: null, rent: [], electricity: [], gas: [], buildingRent: [], profile: null, tenantPortal: null, tenantProfile: null, coreLoadedAt: 0, tenantLoadedAt: 0 };
 
 const MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -172,12 +172,14 @@ async function render() {
     if (state.view === "dashboard") cache.dashboard = await api("GET", "/api/dashboard");
     if (state.view === "building" && state.buildingId) cache.buildingRent = await api("GET", `/api/rent?buildingId=${state.buildingId}`);
     if (state.view === "room" && state.roomId) {
-      const [rent, electricity] = await Promise.all([
+      const [rent, electricity, gas] = await Promise.all([
         api("GET", `/api/rent?roomId=${state.roomId}`),
         api("GET", `/api/electricity?roomId=${state.roomId}`),
+        api("GET", `/api/gas?roomId=${state.roomId}`),
       ]);
       cache.rent = rent.sort((a, b) => b.year - a.year || b.month - a.month);
       cache.electricity = electricity.sort((a, b) => b.year - a.year || b.month - a.month);
+      cache.gas = gas.sort((a, b) => b.year - a.year || b.month - a.month);
     }
   } catch (e) {
     toast(e.message, true);
@@ -215,13 +217,15 @@ function authForm(mode, role) {
 
 function renderTenantPortal() {
   const d = cache.tenantPortal, rentDue = d.rent.filter(x => x.status !== 'paid').reduce((s,x) => s + Math.max(x.rentAmount-x.amountPaid,0),0), elecDue = d.electricity.filter(x => x.status !== 'paid').reduce((s,x) => s + x.amount,0);
+  const gasEntries = d.gas || [];
+  const gasDue = gasEntries.filter(x => x.status !== 'paid').reduce((s,x) => s + x.amount,0);
   const billRows = (entries, type) => entries.slice(0,6).map(e => {
     const proof = e.receipt
       ? `<button class="btn small secondary" data-tenant-action="view-receipt" data-receipt-id="${e.receipt.id}">View proof</button>`
       : `<button class="btn small secondary" data-tenant-action="upload-receipt" data-kind="${type}" data-entry-id="${e.id}">Add proof</button>`;
-    return `<tr><td>${MONTHS[e.month]} ${e.year}${type === 'electricity' ? meterSubtitle(e) : ''}</td><td>${type === 'rent' ? fmtMoney(e.rentAmount) : fmtMoney(e.amount)}</td><td><span class="stamp ${e.status}">${e.status}</span></td><td>${proof}</td></tr>`;
+    return `<tr><td>${MONTHS[e.month]} ${e.year}${type === 'gas' ? gasSubtitle(e) : ''}</td><td>${type === 'rent' ? fmtMoney(e.rentAmount) : fmtMoney(e.amount)}</td><td><span class="stamp ${e.status}">${e.status}</span></td><td>${proof}</td></tr>`;
   }).join('') || `<tr><td colspan="4" class="text">No records yet</td></tr>`;
-  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><span>Welcome, <b>${esc(d.tenant.name)}</b></span><button class="tenant-profile-link" data-tenant-nav="profile">My profile</button><button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main page-enter"><p class="kicker">YOUR HOME</p><h1>${esc(d.building.name)}</h1><p class="tenant-address">${esc(d.room.label)} · Floor ${d.room.floorNumber}</p><section class="tenant-hero"><div><span>Monthly rent</span><strong>${fmtMoney(d.room.monthlyRent)}</strong><small>Your fixed monthly rental</small></div><div><span>Rent outstanding</span><strong class="${rentDue ? 'is-due' : ''}">${fmtMoney(rentDue)}</strong><small>${rentDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Electricity outstanding</span><strong class="${elecDue ? 'is-due' : ''}">${fmtMoney(elecDue)}</strong><small>${elecDue ? 'Payment pending' : 'All caught up'}</small></div></section><section class="tenant-bills"><article class="card"><h3><span>Rent history</span><small>Last 6 entries</small></h3><table class="ledger tenant-ledger"><thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Payment proof</th></tr></thead><tbody>${billRows(d.rent,'rent')}</tbody></table></article><article class="card"><h3><span>Electricity bills</span><small>Last 6 entries</small></h3><table class="ledger tenant-ledger"><thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Payment proof</th></tr></thead><tbody>${billRows(d.electricity,'electricity')}</tbody></table></article></section><input type="file" data-receipt-file accept="image/jpeg,image/png,image/webp,application/pdf" hidden></main></div>`;
+  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><span>Welcome, <b>${esc(d.tenant.name)}</b></span><button class="tenant-profile-link" data-tenant-nav="profile">My profile</button><button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main page-enter"><p class="kicker">YOUR HOME</p><h1>${esc(d.building.name)}</h1><p class="tenant-address">${esc(d.room.label)} · Floor ${d.room.floorNumber}</p><section class="tenant-hero"><div><span>Monthly rent</span><strong>${fmtMoney(d.room.monthlyRent)}</strong><small>Your fixed monthly rental</small></div><div><span>Rent outstanding</span><strong class="${rentDue ? 'is-due' : ''}">${fmtMoney(rentDue)}</strong><small>${rentDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Electricity outstanding</span><strong class="${elecDue ? 'is-due' : ''}">${fmtMoney(elecDue)}</strong><small>${elecDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Gas outstanding</span><strong class="${gasDue ? 'is-due' : ''}">${fmtMoney(gasDue)}</strong><small>${gasDue ? 'Payment pending' : 'All caught up'}</small></div></section><section class="tenant-bills"><article class="card"><h3><span>Rent history</span><small>Last 6 entries</small></h3><table class="ledger tenant-ledger"><thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Payment proof</th></tr></thead><tbody>${billRows(d.rent,'rent')}</tbody></table></article><article class="card"><h3><span>Electricity bills</span><small>Last 6 entries</small></h3><table class="ledger tenant-ledger"><thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Payment proof</th></tr></thead><tbody>${billRows(d.electricity,'electricity')}</tbody></table></article><article class="card"><h3><span>Gas bills</span><small>Last 6 entries</small></h3><table class="ledger tenant-ledger"><thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Payment proof</th></tr></thead><tbody>${billRows(gasEntries,'gas')}</tbody></table></article></section><input type="file" data-receipt-file accept="image/jpeg,image/png,image/webp,application/pdf" hidden></main></div>`;
 }
 
 function displayDate(value) { return value ? new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not provided'; }
@@ -391,8 +395,11 @@ function renderDashboard() {
       <div class="stat-card warn"><div class="stat-label">Rent pending (this mo.)</div><div class="stat-value">${fmtMoney(d.rentPending)}</div></div>
       <div class="stat-card good"><div class="stat-label">Electricity collected</div><div class="stat-value">${fmtMoney(d.elecCollected)}</div></div>
       <div class="stat-card warn"><div class="stat-label">Electricity pending</div><div class="stat-value">${fmtMoney(d.elecPending)}</div></div>
+      <div class="stat-card good"><div class="stat-label">Gas collected</div><div class="stat-value">${fmtMoney(d.gasCollected)}</div></div>
+      <div class="stat-card warn"><div class="stat-label">Gas pending</div><div class="stat-value">${fmtMoney(d.gasPending)}</div></div>
       <div class="stat-card warn"><div class="stat-label">Open rent entries</div><div class="stat-value">${d.outstandingRentEntries ?? "–"}</div></div>
       <div class="stat-card warn"><div class="stat-label">Open electricity entries</div><div class="stat-value">${d.outstandingElectricityEntries ?? "–"}</div></div>
+      <div class="stat-card warn"><div class="stat-label">Open gas entries</div><div class="stat-value">${d.outstandingGasEntries ?? "–"}</div></div>
     </div>
 
     ${addBuildingForm}
@@ -537,18 +544,25 @@ function renderRoomView() {
   if (!r) { state.view = "dashboard"; return renderDashboard(); }
   const b = cache.buildings.find((x) => x.id === r.buildingId);
   const tenant = cache.tenants.find((t) => t.roomId === r.id && t.active);
-  if (r.electricityOnly && state.roomTab !== 'electricity') state.roomTab = 'electricity';
+  if (r.electricityOnly && !["electricity", "gas"].includes(state.roomTab)) state.roomTab = 'electricity';
 
-  const tabs = r.electricityOnly ? `<div class="tab-row"><button class="tab-btn active" data-room-tab="electricity">Electricity</button></div>` : `
+  const tabs = r.electricityOnly ? `
+    <div class="tab-row">
+      <button class="tab-btn ${state.roomTab === "electricity" ? "active" : ""}" data-room-tab="electricity">Electricity</button>
+      <button class="tab-btn ${state.roomTab === "gas" ? "active" : ""}" data-room-tab="gas">Gas</button>
+    </div>
+  ` : `
     <div class="tab-row">
       <button class="tab-btn ${state.roomTab === "tenant" ? "active" : ""}" data-room-tab="tenant">Tenant</button>
       <button class="tab-btn ${state.roomTab === "rent" ? "active" : ""}" data-room-tab="rent">Rent</button>
       <button class="tab-btn ${state.roomTab === "electricity" ? "active" : ""}" data-room-tab="electricity">Electricity</button>
+      <button class="tab-btn ${state.roomTab === "gas" ? "active" : ""}" data-room-tab="gas">Gas</button>
     </div>
   `;
 
   let body = "";
-  if (r.electricityOnly) body = renderElectricityTab(r, null);
+  if (state.roomTab === "gas") body = renderGasTab(r, r.electricityOnly ? null : tenant);
+  else if (r.electricityOnly) body = renderElectricityTab(r, null);
   else if (state.roomTab === "tenant") body = renderTenantTab(r, tenant);
   else if (state.roomTab === "rent") body = renderRentTab(r, tenant);
   else body = renderElectricityTab(r, tenant);
@@ -688,70 +702,11 @@ function renderRentTab(r, tenant) {
   `;
 }
 
-// Meter ID + billing-authority link for a room. Once linked, new electricity
-// bills for this room are entered as a direct amount from that authority
-// instead of being calculated from meter readings.
-function meterCard(r) {
-  if (r.meterId && r.authorityId) {
-    const authority = cache.authorities.find((a) => a.id === r.authorityId);
-    return `<div class="card meter-card">
-      <h3>Meter &amp; billing authority</h3>
-      <p class="profile-note">Meter <strong>${esc(r.meterId)}</strong> · billed by <strong>${esc(authority ? authority.name : "an authority that's since been removed")}</strong>. New electricity bills for this room are entered as a direct amount — no meter readings needed.</p>
-      <button class="btn secondary small" data-action="unlink-meter" data-room-id="${r.id}">Unlink meter</button>
-    </div>`;
-  }
-  const options = cache.authorities.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("");
-  return `<div class="card meter-card">
-    <h3>Meter &amp; billing authority</h3>
-    <p class="profile-note">Link this room to a meter ID and a billing authority (electricity board, utility company, etc.) to enter bills as a direct amount instead of meter readings.</p>
-    <form data-submit="link-meter" data-room-id="${r.id}">
-      <div class="form-grid cols-3">
-        <div class="form-field"><label>Meter ID *</label><input name="meterId" required placeholder="e.g. EB-4521" /></div>
-        <div class="form-field"><label>Billing authority *</label>
-          <select name="authorityId" required data-authority-select>
-            <option value="">Select authority</option>
-            ${options}
-            <option value="__new__">+ Add new authority…</option>
-          </select>
-        </div>
-        <div class="form-field hidden" data-new-authority-field><label>New authority name</label><input name="newAuthorityName" placeholder="e.g. State Electricity Board" /></div>
-      </div>
-      <div class="form-actions"><button class="btn" type="submit">Link meter</button></div>
-    </form>
-  </div>`;
-}
-
-function meterSubtitle(e) {
-  if (e.billingMode !== "authority") return "";
-  const parts = [e.authorityName, e.meterId ? `Meter ${e.meterId}` : ""].filter(Boolean);
-  return parts.length ? `<br><small style="color:var(--teal-mid);font-size:10px">${esc(parts.join(" · "))}</small>` : "";
-}
-
 function renderElectricityTab(r, tenant) {
   const now = new Date();
   const lastReading = cache.electricity.length ? cache.electricity[0].currReading : 0;
-  const linked = Boolean(r.meterId && r.authorityId);
-  const editForms = cache.electricity.filter((entry) => state.forms[`editElec-${entry.id}`]).map((entry) => entry.billingMode === "authority" ? `<div class="card ledger-edit"><h3>Edit bill · ${MONTHS[entry.month]} ${entry.year}</h3><form data-submit="edit-electricity" data-id="${entry.id}"><div class="form-grid cols-3"><div class="form-field"><label>Month *</label><select name="month" required>${MONTHS.slice(1).map((month, index) => `<option value="${index + 1}" ${index + 1 === Number(entry.month) ? 'selected' : ''}>${month}</option>`).join('')}</select></div><div class="form-field"><label>Year *</label><input name="year" type="number" required value="${entry.year}"></div><div class="form-field"><label>Bill amount (₹) *</label><input name="amount" type="number" min="0" step="0.01" required value="${entry.amount}"></div><div class="form-field"><label>Paid date</label><input name="paidDate" type="date" value="${esc(entry.paidDate || '')}"></div><div class="form-field" style="grid-column:span 3"><label>Notes</label><input name="notes" value="${esc(entry.notes || '')}"></div></div><div class="form-actions"><button class="btn" type="submit">Save changes</button><button class="btn secondary" type="button" data-toggle-form="editElec-${entry.id}">Cancel</button></div></form></div>` : `<div class="card ledger-edit"><h3>Edit electricity entry · ${MONTHS[entry.month]} ${entry.year}</h3><form data-submit="edit-electricity" data-id="${entry.id}"><div class="form-grid cols-3"><div class="form-field"><label>Month *</label><select name="month" required>${MONTHS.slice(1).map((month, index) => `<option value="${index + 1}" ${index + 1 === Number(entry.month) ? 'selected' : ''}>${month}</option>`).join('')}</select></div><div class="form-field"><label>Year *</label><input name="year" type="number" required value="${entry.year}"></div><div class="form-field"><label>Rate per unit (₹)</label><input name="ratePerUnit" type="number" min="0" step="0.01" value="${entry.ratePerUnit}"></div><div class="form-field"><label>Previous reading</label><input name="prevReading" type="number" min="0" step="0.01" value="${entry.prevReading}"></div><div class="form-field"><label>Current reading *</label><input name="currReading" type="number" min="0" step="0.01" required value="${entry.currReading}"></div><div class="form-field"><label>Paid date</label><input name="paidDate" type="date" value="${esc(entry.paidDate || '')}"></div><div class="form-field" style="grid-column:span 3"><label>Notes</label><input name="notes" value="${esc(entry.notes || '')}"></div></div><div class="form-actions"><button class="btn" type="submit">Save changes</button><button class="btn secondary" type="button" data-toggle-form="editElec-${entry.id}">Cancel</button></div></form></div>`).join('');
-  const addForm = state.forms.addElec ? (linked ? `
-    <div class="card">
-      <h3>Add electricity bill</h3>
-      <form data-submit="add-electricity" data-room-id="${r.id}" data-tenant-id="${tenant ? tenant.id : ""}">
-        <div class="form-grid cols-3">
-          <div class="form-field"><label>Month *</label>
-            <select name="month" required>${MONTHS.slice(1).map((m, i) => `<option value="${i + 1}" ${i + 1 === now.getMonth() + 1 ? "selected" : ""}>${m}</option>`).join("")}</select>
-          </div>
-          <div class="form-field"><label>Year *</label><input name="year" type="number" required value="${now.getFullYear()}" /></div>
-          <div class="form-field"><label>Bill amount (₹) *</label><input name="amount" type="number" min="0" step="0.01" required placeholder="e.g. 1450" /></div>
-          <div class="form-field"><label>Paid date</label><input name="paidDate" type="date" /></div>
-          <div class="form-field" style="grid-column: span 3;"><label>Notes</label><input name="notes" placeholder="Optional" /></div>
-        </div>
-        <div class="form-actions">
-          <button class="btn" type="submit">Save bill</button>
-          <button class="btn secondary" type="button" data-toggle-form="addElec">Cancel</button>
-        </div>
-      </form>
-    </div>
-  ` : `
+  const editForms = cache.electricity.filter((entry) => state.forms[`editElec-${entry.id}`]).map((entry) => `<div class="card ledger-edit"><h3>Edit electricity entry · ${MONTHS[entry.month]} ${entry.year}</h3><form data-submit="edit-electricity" data-id="${entry.id}"><div class="form-grid cols-3"><div class="form-field"><label>Month *</label><select name="month" required>${MONTHS.slice(1).map((month, index) => `<option value="${index + 1}" ${index + 1 === Number(entry.month) ? 'selected' : ''}>${month}</option>`).join('')}</select></div><div class="form-field"><label>Year *</label><input name="year" type="number" required value="${entry.year}"></div><div class="form-field"><label>Rate per unit (₹)</label><input name="ratePerUnit" type="number" min="0" step="0.01" value="${entry.ratePerUnit}"></div><div class="form-field"><label>Previous reading</label><input name="prevReading" type="number" min="0" step="0.01" value="${entry.prevReading}"></div><div class="form-field"><label>Current reading *</label><input name="currReading" type="number" min="0" step="0.01" required value="${entry.currReading}"></div><div class="form-field"><label>Paid date</label><input name="paidDate" type="date" value="${esc(entry.paidDate || '')}"></div><div class="form-field" style="grid-column:span 3"><label>Notes</label><input name="notes" value="${esc(entry.notes || '')}"></div></div><div class="form-actions"><button class="btn" type="submit">Save changes</button><button class="btn secondary" type="button" data-toggle-form="editElec-${entry.id}">Cancel</button></div></form></div>`).join('');
+  const addForm = state.forms.addElec ? `
     <div class="card">
       <h3>Add electricity entry</h3>
       <form data-submit="add-electricity" data-room-id="${r.id}" data-tenant-id="${tenant ? tenant.id : ""}">
@@ -772,15 +727,14 @@ function renderElectricityTab(r, tenant) {
         </div>
       </form>
     </div>
-  `) : "";
+  ` : "";
 
   return `
-    ${meterCard(r)}
     ${addForm}${editForms}
     <div class="card">
       <h3>
         Electricity history
-        <button class="btn small" data-toggle-form="addElec">+ Add ${linked ? "bill" : "reading"}</button>
+        <button class="btn small" data-toggle-form="addElec">+ Add reading</button>
       </h3>
       ${cache.electricity.length === 0 ? `<div class="empty-state">No electricity entries yet.</div>` : `
         <table class="ledger">
@@ -788,11 +742,11 @@ function renderElectricityTab(r, tenant) {
           <tbody>
             ${cache.electricity.map((e) => `
               <tr>
-                <td class="text">${MONTHS[e.month]} ${e.year}${meterSubtitle(e)}</td>
-                <td>${e.billingMode === "authority" ? "—" : e.prevReading}</td>
-                <td>${e.billingMode === "authority" ? "—" : e.currReading}</td>
-                <td>${e.billingMode === "authority" ? "—" : e.unitsConsumed}</td>
-                <td>${e.billingMode === "authority" ? "—" : fmtMoney(e.ratePerUnit)}</td>
+                <td class="text">${MONTHS[e.month]} ${e.year}</td>
+                <td>${e.prevReading}</td>
+                <td>${e.currReading}</td>
+                <td>${e.unitsConsumed}</td>
+                <td>${fmtMoney(e.ratePerUnit)}</td>
                 <td>${fmtMoney(e.amount)}</td>
                 <td><span class="stamp ${e.status}">${e.status}</span></td>
                 <td style="white-space:nowrap;">
@@ -800,6 +754,105 @@ function renderElectricityTab(r, tenant) {
                   <button class="btn small secondary" data-toggle-form="editElec-${e.id}">Edit</button>
                   ${e.status !== "paid" ? `<button class="btn small secondary" data-action="mark-elec-paid" data-id="${e.id}">Mark paid</button>` : ""}
                   <button class="btn small danger" data-action="delete-electricity" data-id="${e.id}">Delete</button>
+                </td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      `}
+    </div>
+  `;
+}
+
+// Gas meter ID + billing-authority link for a room. Gas is always billed
+// directly by the linked authority (there's no meter-reading calculation
+// mode) — the amount on each bill is whatever the owner reads off that
+// authority's own bill/portal for this meter, entered by hand. The app has
+// no official API into any gas provider's billing system, so this is not an
+// automatic fetch, it's a manual due-amount entry that then shows as "due"
+// in the tenant's gas section, same as the rent and electricity ledgers.
+function gasCard(r) {
+  if (r.gasMeterId && r.gasAuthorityId) {
+    const authority = cache.authorities.find((a) => a.id === r.gasAuthorityId);
+    return `<div class="card meter-card">
+      <h3>Gas meter &amp; billing authority</h3>
+      <p class="profile-note">Meter <strong>${esc(r.gasMeterId)}</strong> · billed by <strong>${esc(authority ? authority.name : "an authority that's since been removed")}</strong>. Enter each bill's due amount as shown by that authority below.</p>
+      <button class="btn secondary small" data-action="unlink-gas-meter" data-room-id="${r.id}">Unlink gas meter</button>
+    </div>`;
+  }
+  const options = cache.authorities.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join("");
+  return `<div class="card meter-card">
+    <h3>Gas meter &amp; billing authority</h3>
+    <p class="profile-note">Link this room to a gas meter ID and a billing authority (gas board, LPG/PNG supplier, etc.) before adding gas bills.</p>
+    <form data-submit="link-gas-meter" data-room-id="${r.id}">
+      <div class="form-grid cols-3">
+        <div class="form-field"><label>Meter ID *</label><input name="meterId" required placeholder="e.g. GAS-4521" /></div>
+        <div class="form-field"><label>Billing authority *</label>
+          <select name="authorityId" required data-authority-select>
+            <option value="">Select authority</option>
+            ${options}
+            <option value="__new__">+ Add new authority…</option>
+          </select>
+        </div>
+        <div class="form-field hidden" data-new-authority-field><label>New authority name</label><input name="newAuthorityName" placeholder="e.g. Indraprastha Gas Limited" /></div>
+      </div>
+      <div class="form-actions"><button class="btn" type="submit">Link meter</button></div>
+    </form>
+  </div>`;
+}
+
+function gasSubtitle(e) {
+  const parts = [e.authorityName, e.meterId ? `Meter ${e.meterId}` : ""].filter(Boolean);
+  return parts.length ? `<br><small style="color:var(--teal-mid);font-size:10px">${esc(parts.join(" · "))}</small>` : "";
+}
+
+function renderGasTab(r, tenant) {
+  const now = new Date();
+  const linked = Boolean(r.gasMeterId && r.gasAuthorityId);
+  const editForms = cache.gas.filter((entry) => state.forms[`editGas-${entry.id}`]).map((entry) => `<div class="card ledger-edit"><h3>Edit bill · ${MONTHS[entry.month]} ${entry.year}</h3><form data-submit="edit-gas" data-id="${entry.id}"><div class="form-grid cols-3"><div class="form-field"><label>Month *</label><select name="month" required>${MONTHS.slice(1).map((month, index) => `<option value="${index + 1}" ${index + 1 === Number(entry.month) ? 'selected' : ''}>${month}</option>`).join('')}</select></div><div class="form-field"><label>Year *</label><input name="year" type="number" required value="${entry.year}"></div><div class="form-field"><label>Due amount (₹) *</label><input name="amount" type="number" min="0" step="0.01" required value="${entry.amount}"></div><div class="form-field"><label>Paid date</label><input name="paidDate" type="date" value="${esc(entry.paidDate || '')}"></div><div class="form-field" style="grid-column:span 3"><label>Notes</label><input name="notes" value="${esc(entry.notes || '')}"></div></div><div class="form-actions"><button class="btn" type="submit">Save changes</button><button class="btn secondary" type="button" data-toggle-form="editGas-${entry.id}">Cancel</button></div></form></div>`).join('');
+  const addForm = state.forms.addGas && linked ? `
+    <div class="card">
+      <h3>Add gas bill</h3>
+      <form data-submit="add-gas" data-room-id="${r.id}" data-tenant-id="${tenant ? tenant.id : ""}">
+        <div class="form-grid cols-3">
+          <div class="form-field"><label>Month *</label>
+            <select name="month" required>${MONTHS.slice(1).map((m, i) => `<option value="${i + 1}" ${i + 1 === now.getMonth() + 1 ? "selected" : ""}>${m}</option>`).join("")}</select>
+          </div>
+          <div class="form-field"><label>Year *</label><input name="year" type="number" required value="${now.getFullYear()}" /></div>
+          <div class="form-field"><label>Due amount (₹) *</label><input name="amount" type="number" min="0" step="0.01" required placeholder="e.g. 650" /></div>
+          <div class="form-field"><label>Paid date</label><input name="paidDate" type="date" /></div>
+          <div class="form-field" style="grid-column: span 3;"><label>Notes</label><input name="notes" placeholder="Optional" /></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn" type="submit">Save bill</button>
+          <button class="btn secondary" type="button" data-toggle-form="addGas">Cancel</button>
+        </div>
+      </form>
+    </div>
+  ` : "";
+
+  return `
+    ${gasCard(r)}
+    ${addForm}${editForms}
+    <div class="card">
+      <h3>
+        Gas history
+        <button class="btn small" data-toggle-form="addGas" ${linked ? "" : "disabled title=\"Link a gas meter first\""}>+ Add bill</button>
+      </h3>
+      ${cache.gas.length === 0 ? `<div class="empty-state">No gas entries yet.</div>` : `
+        <table class="ledger">
+          <thead><tr><th>Period</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+          <tbody>
+            ${cache.gas.map((e) => `
+              <tr>
+                <td class="text">${MONTHS[e.month]} ${e.year}${gasSubtitle(e)}</td>
+                <td>${fmtMoney(e.amount)}</td>
+                <td><span class="stamp ${e.status}">${e.status}</span></td>
+                <td style="white-space:nowrap;">
+                  ${e.receipt ? `<button class="btn small secondary" data-action="view-receipt" data-receipt-id="${e.receipt.id}">View proof</button>` : ""}
+                  <button class="btn small secondary" data-toggle-form="editGas-${e.id}">Edit</button>
+                  ${e.status !== "paid" ? `<button class="btn small secondary" data-action="mark-gas-paid" data-id="${e.id}">Mark paid</button>` : ""}
+                  <button class="btn small danger" data-action="delete-gas" data-id="${e.id}">Delete</button>
                 </td>
               </tr>
             `).join("")}
@@ -899,10 +952,17 @@ async function handleAction(el) {
       if (!confirm("Delete this electricity entry?")) return;
       await api("DELETE", `/api/electricity/${el.dataset.id}`);
       toast("Entry deleted");
-    } else if (act === "unlink-meter") {
-      if (!confirm("Unlink this meter? New bills will go back to meter-reading entry. Past bill history is kept as-is.")) return;
-      await api("DELETE", `/api/rooms/${el.dataset.roomId}/meter`);
-      toast("Meter unlinked");
+    } else if (act === "mark-gas-paid") {
+      await api("PUT", `/api/gas/${el.dataset.id}`, { paidDate: today() });
+      toast("Gas bill marked as paid");
+    } else if (act === "delete-gas") {
+      if (!confirm("Delete this gas entry?")) return;
+      await api("DELETE", `/api/gas/${el.dataset.id}`);
+      toast("Entry deleted");
+    } else if (act === "unlink-gas-meter") {
+      if (!confirm("Unlink this gas meter? Past bill history is kept as-is.")) return;
+      await api("DELETE", `/api/rooms/${el.dataset.roomId}/gas-meter`);
+      toast("Gas meter unlinked");
     }
     invalidateData(); cache.profile = null; cache.tenantProfile = null;
     render();
@@ -959,7 +1019,15 @@ async function handleSubmit(form) {
       await api('PUT', `/api/electricity/${form.dataset.id}`, data);
       state.forms[`editElec-${form.dataset.id}`] = false;
       toast('Electricity entry updated');
-    } else if (kind === 'link-meter') {
+    } else if (kind === "add-gas") {
+      await api("POST", "/api/gas", { ...data, roomId: form.dataset.roomId, tenantId: form.dataset.tenantId || null });
+      state.forms.addGas = false;
+      toast("Gas bill added");
+    } else if (kind === 'edit-gas') {
+      await api('PUT', `/api/gas/${form.dataset.id}`, data);
+      state.forms[`editGas-${form.dataset.id}`] = false;
+      toast('Gas bill updated');
+    } else if (kind === 'link-gas-meter') {
       let authorityId = data.authorityId;
       if (authorityId === '__new__') {
         const name = (data.newAuthorityName || '').trim();
@@ -968,8 +1036,8 @@ async function handleSubmit(form) {
         authorityId = authority.id;
       }
       if (!authorityId) throw new Error('Choose a billing authority.');
-      await api('PUT', `/api/rooms/${form.dataset.roomId}/meter`, { meterId: data.meterId, authorityId });
-      toast('Meter linked');
+      await api('PUT', `/api/rooms/${form.dataset.roomId}/gas-meter`, { meterId: data.meterId, authorityId });
+      toast('Gas meter linked');
     }
     invalidateData(); cache.profile = null; cache.tenantProfile = null;
     render();
