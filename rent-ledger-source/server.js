@@ -851,6 +851,42 @@ app.get(/^\/(?!api\/).*/, (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
+// ---------- default billing authorities ----------
+// Seeds a starter list of Delhi/UP electricity boards into the authorities
+// list on boot, so the owner doesn't have to type each one in by hand. Runs
+// once at startup; only adds names that aren't already present (case-
+// insensitive), so it never duplicates or touches authorities already added
+// or renamed by the owner.
+const DEFAULT_AUTHORITIES = [
+  "Delhi Electricity Regulatory Commission",
+  "Delhi Transco Limited",
+  "BRPL",
+  "BYPL",
+  "TPDDL",
+  "IPGCL",
+  "PPCL",
+  "Uttar Pradesh Rajya Vidyut Utpadan Nigam (UPRVUN)",
+  "Uttar Pradesh Rajya Vidyut Utpadan Nigam Limited (UPRVUNL)",
+  "Uttar Pradesh Power Corporation Limited (UPPCL)",
+  "UP Power Transmission Corporation Limited (UPPTCL)",
+  "UP Jal Vidyut Nigam Limited (UPJVNL)",
+];
+
+function seedDefaultAuthorities() {
+  const db = loadDb();
+  db.authorities = db.authorities || [];
+  let changed = false;
+  for (const name of DEFAULT_AUTHORITIES) {
+    const exists = db.authorities.some((a) => a.name.toLowerCase() === name.toLowerCase());
+    if (!exists) {
+      db.authorities.push({ id: id(), name, createdAt: new Date().toISOString() });
+      changed = true;
+    }
+  }
+  if (changed) saveDb(db);
+}
+seedDefaultAuthorities();
+
 app.listen(PORT, '0.0.0.0', () => {
   const addresses = Object.values(os.networkInterfaces()).flat().filter(info => info && info.family === 'IPv4' && !info.internal).map(info => info.address);
   console.log(`Rent Ledger on this Mac: http://localhost:${PORT}`);
