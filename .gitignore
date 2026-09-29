@@ -1,0 +1,5 @@
+# Local secrets and build output — never commit these.
+.env
+.env.*
+!.env.example
+node_modules/
