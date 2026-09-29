@@ -61,7 +61,7 @@ async function requestAppInstall() {
 function apiBase() { return isMobileApp ? (localStorage.getItem('rentLedgerApiBase') || '') : ''; }
 function apiUrl(url) { return apiBase() ? apiBase().replace(/\/$/, '') + url : url; }
 
-const cache = { buildings: [], rooms: [], tenants: [], authorities: [], dashboard: null, rent: [], electricity: [], gas: [], buildingRent: [], profile: null, tenantPortal: null, tenantProfile: null, coreLoadedAt: 0, tenantLoadedAt: 0 };
+const cache = { buildings: [], rooms: [], tenants: [], authorities: [], dashboard: null, rent: [], electricity: [], gas: [], payments: [], buildingRent: [], profile: null, tenantPortal: null, tenantProfile: null, coreLoadedAt: 0, tenantLoadedAt: 0 };
 
 const MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -169,7 +169,7 @@ async function render() {
   try {
     await loadCore();
     if (state.view === 'profile' && !cache.profile) cache.profile = await api('GET', '/api/account/profile');
-    if (state.view === "dashboard") cache.dashboard = await api("GET", "/api/dashboard");
+    if (state.view === "dashboard") [cache.dashboard, cache.payments] = await Promise.all([api("GET", "/api/dashboard"), api("GET", "/api/payments?limit=8")]);
     if (state.view === "building" && state.buildingId) cache.buildingRent = await api("GET", `/api/rent?buildingId=${state.buildingId}`);
     if (state.view === "room" && state.roomId) {
       const [rent, electricity, gas] = await Promise.all([
@@ -216,16 +216,88 @@ function authForm(mode, role) {
 }
 
 function renderTenantPortal() {
-  const d = cache.tenantPortal, rentDue = d.rent.filter(x => x.status !== 'paid').reduce((s,x) => s + Math.max(x.rentAmount-x.amountPaid,0),0), elecDue = d.electricity.filter(x => x.status !== 'paid').reduce((s,x) => s + x.amount,0);
+  const d = cache.tenantPortal;
   const gasEntries = d.gas || [];
-  const gasDue = gasEntries.filter(x => x.status !== 'paid').reduce((s,x) => s + x.amount,0);
+  const owed = (entry, type) => entry.status === 'paid' ? 0 : type === 'rent' ? Math.max((entry.rentAmount || 0) - (entry.amountPaid || 0), 0) : (entry.amount || 0);
+  const rentDue = d.rent.reduce((s, x) => s + owed(x, 'rent'), 0);
+  const elecDue = d.electricity.reduce((s, x) => s + owed(x, 'electricity'), 0);
+  const gasDue = gasEntries.reduce((s, x) => s + owed(x, 'gas'), 0);
+  const totalDue = rentDue + elecDue + gasDue;
+  const canPayOnline = Boolean(d.payments?.enabled);
   const billRows = (entries, type) => entries.slice(0,6).map(e => {
-    const proof = e.receipt
-      ? `<button class="btn small secondary" data-tenant-action="view-receipt" data-receipt-id="${e.receipt.id}">View proof</button>`
-      : `<button class="btn small secondary" data-tenant-action="upload-receipt" data-kind="${type}" data-entry-id="${e.id}">Add proof</button>`;
-    return `<tr><td>${MONTHS[e.month]} ${e.year}${type === 'gas' ? gasSubtitle(e) : ''}</td><td>${type === 'rent' ? fmtMoney(e.rentAmount) : fmtMoney(e.amount)}</td><td><span class="stamp ${e.status}">${e.status}</span></td><td>${proof}</td></tr>`;
+    const due = owed(e, type);
+    const payButton = canPayOnline && due > 0
+      ? `<button class="btn small pay-btn" data-tenant-action="pay-bill" data-kind="${type}" data-entry-id="${e.id}">Pay ${fmtMoney(due)}</button>`
+      : '';
+    const proof = e.onlinePayment && e.status === 'paid'
+      ? `<span class="paid-online" title="Razorpay ${esc(e.onlinePayment.paymentId || '')}">✓ Paid online</span>`
+      : e.receipt
+        ? `<button class="btn small secondary" data-tenant-action="view-receipt" data-receipt-id="${e.receipt.id}">View proof</button>`
+        : `<button class="btn small secondary" data-tenant-action="upload-receipt" data-kind="${type}" data-entry-id="${e.id}">Add proof</button>`;
+    return `<tr><td>${MONTHS[e.month]} ${e.year}${type === 'gas' ? gasSubtitle(e) : ''}</td><td>${type === 'rent' ? fmtMoney(e.rentAmount) : fmtMoney(e.amount)}</td><td><span class="stamp ${e.status}">${e.status}</span></td><td><div class="bill-actions">${payButton}${proof}</div></td></tr>`;
   }).join('') || `<tr><td colspan="4" class="text">No records yet</td></tr>`;
-  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><span>Welcome, <b>${esc(d.tenant.name)}</b></span><button class="tenant-profile-link" data-tenant-nav="profile">My profile</button><button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main page-enter"><p class="kicker">YOUR HOME</p><h1>${esc(d.building.name)}</h1><p class="tenant-address">${esc(d.room.label)} · Floor ${d.room.floorNumber}</p><section class="tenant-hero"><div><span>Monthly rent</span><strong>${fmtMoney(d.room.monthlyRent)}</strong><small>Your fixed monthly rental</small></div><div><span>Rent outstanding</span><strong class="${rentDue ? 'is-due' : ''}">${fmtMoney(rentDue)}</strong><small>${rentDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Electricity outstanding</span><strong class="${elecDue ? 'is-due' : ''}">${fmtMoney(elecDue)}</strong><small>${elecDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Gas outstanding</span><strong class="${gasDue ? 'is-due' : ''}">${fmtMoney(gasDue)}</strong><small>${gasDue ? 'Payment pending' : 'All caught up'}</small></div></section><section class="tenant-bills"><article class="card"><h3><span>Rent history</span><small>Last 6 entries</small></h3><table class="ledger tenant-ledger"><thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Payment proof</th></tr></thead><tbody>${billRows(d.rent,'rent')}</tbody></table></article><article class="card"><h3><span>Electricity bills</span><small>Last 6 entries</small></h3><table class="ledger tenant-ledger"><thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Payment proof</th></tr></thead><tbody>${billRows(d.electricity,'electricity')}</tbody></table></article><article class="card"><h3><span>Gas bills</span><small>Last 6 entries</small></h3><table class="ledger tenant-ledger"><thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Payment proof</th></tr></thead><tbody>${billRows(gasEntries,'gas')}</tbody></table></article></section><input type="file" data-receipt-file accept="image/jpeg,image/png,image/webp,application/pdf" hidden></main></div>`;
+  const payAll = totalDue > 0
+    ? (canPayOnline
+      ? `<section class="card pay-all-card"><div><span class="kicker">TOTAL PENDING</span><strong>${fmtMoney(totalDue)}</strong><small>Rent, electricity and gas together · paid securely via Razorpay (UPI, cards, net banking)</small></div><button class="btn pay-btn" data-tenant-action="pay-all">Pay all ${fmtMoney(totalDue)}</button></section>`
+      : `<section class="card pay-all-card muted"><div><span class="kicker">TOTAL PENDING</span><strong>${fmtMoney(totalDue)}</strong><small>Online payment isn't enabled by your owner yet. Pay them directly and add a payment proof below.</small></div></section>`)
+    : '';
+  const table = (title, entries, type) => `<article class="card"><h3><span>${title}</span><small>Last 6 entries</small></h3><table class="ledger tenant-ledger"><thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Payment</th></tr></thead><tbody>${billRows(entries, type)}</tbody></table></article>`;
+  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><span>Welcome, <b>${esc(d.tenant.name)}</b></span><button class="tenant-profile-link" data-tenant-nav="profile">My profile</button><button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main page-enter"><p class="kicker">YOUR HOME</p><h1>${esc(d.building.name)}</h1><p class="tenant-address">${esc(d.room.label)} · Floor ${d.room.floorNumber}</p><section class="tenant-hero"><div><span>Monthly rent</span><strong>${fmtMoney(d.room.monthlyRent)}</strong><small>Your fixed monthly rental</small></div><div><span>Rent outstanding</span><strong class="${rentDue ? 'is-due' : ''}">${fmtMoney(rentDue)}</strong><small>${rentDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Electricity outstanding</span><strong class="${elecDue ? 'is-due' : ''}">${fmtMoney(elecDue)}</strong><small>${elecDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Gas outstanding</span><strong class="${gasDue ? 'is-due' : ''}">${fmtMoney(gasDue)}</strong><small>${gasDue ? 'Payment pending' : 'All caught up'}</small></div></section>${payAll}<section class="tenant-bills">${table('Rent history', d.rent, 'rent')}${table('Electricity bills', d.electricity, 'electricity')}${table('Gas bills', gasEntries, 'gas')}</section><input type="file" data-receipt-file accept="image/jpeg,image/png,image/webp,application/pdf" hidden></main></div>`;
+}
+
+// ---------- online payments (Razorpay Checkout) ----------
+let razorpayScriptPromise = null;
+function loadRazorpayCheckout() {
+  if (window.Razorpay) return Promise.resolve();
+  if (!razorpayScriptPromise) {
+    razorpayScriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve();
+      script.onerror = () => { razorpayScriptPromise = null; reject(new Error('Could not load Razorpay. Check your internet connection and try again.')); };
+      document.head.appendChild(script);
+    });
+  }
+  return razorpayScriptPromise;
+}
+
+// body is either { items: [{ kind, id }] } or { all: true }. The server works
+// out the amount; the browser never sends one.
+async function startTenantPayment(body, button) {
+  if (button) button.disabled = true;
+  try {
+    const [order] = await Promise.all([api('POST', '/api/tenant/payments/order', body), loadRazorpayCheckout()]);
+    await new Promise((resolve) => {
+      let settled = false;
+      const finish = () => { if (!settled) { settled = true; resolve(); } };
+      const checkout = new window.Razorpay({
+        key: order.keyId,
+        order_id: order.orderId,
+        amount: order.amount,
+        currency: order.currency,
+        name: order.name,
+        description: order.description,
+        prefill: order.prefill,
+        theme: { color: '#0b5968' },
+        handler: async (response) => {
+          try {
+            const result = await api('POST', '/api/tenant/payments/verify', response);
+            toast(`Payment of ${fmtMoney(result.amount)} received. Thank you!`);
+          } catch (error) { toast(error.message, true); }
+          finish();
+        },
+        modal: { ondismiss: () => { toast('Payment was not completed.'); finish(); } },
+      });
+      checkout.on('payment.failed', (response) => toast(response?.error?.description || 'Payment failed. You can try again.', true));
+      checkout.open();
+    });
+    cache.tenantLoadedAt = 0;
+    render();
+  } catch (error) {
+    toast(error.message, true);
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 function displayDate(value) { return value ? new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not provided'; }
@@ -281,6 +353,12 @@ function attachTenantHandlers() {
   });
   document.querySelectorAll('[data-tenant-action="view-receipt"]').forEach((btn) => btn.onclick = async () => {
     try { await openReceipt(btn.dataset.receiptId); } catch (error) { toast(error.message, true); }
+  });
+  document.querySelectorAll('[data-tenant-action="pay-bill"]').forEach((btn) => btn.onclick = () => {
+    startTenantPayment({ items: [{ kind: btn.dataset.kind, id: btn.dataset.entryId }] }, btn);
+  });
+  document.querySelectorAll('[data-tenant-action="pay-all"]').forEach((btn) => btn.onclick = () => {
+    startTenantPayment({ all: true }, btn);
   });
   const receiptInput = document.querySelector('[data-receipt-file]');
   if (receiptInput) receiptInput.onchange = async (event) => {
@@ -401,6 +479,8 @@ function renderDashboard() {
       <div class="stat-card warn"><div class="stat-label">Open electricity entries</div><div class="stat-value">${d.outstandingElectricityEntries ?? "–"}</div></div>
       <div class="stat-card warn"><div class="stat-label">Open gas entries</div><div class="stat-value">${d.outstandingGasEntries ?? "–"}</div></div>
     </div>
+
+    ${renderOnlinePaymentsCard(d)}
 
     ${addBuildingForm}
 
@@ -682,7 +762,7 @@ function renderRentTab(r, tenant) {
           <tbody>
             ${cache.rent.map((e) => `
               <tr>
-                <td class="text">${MONTHS[e.month]} ${e.year}</td>
+                <td class="text">${MONTHS[e.month]} ${e.year}${onlinePaymentNote(e)}</td>
                 <td>${fmtMoney(e.rentAmount)}</td>
                 <td>${fmtMoney(e.amountPaid)}</td>
                 <td><span class="stamp ${e.status}">${e.status}</span></td>
@@ -700,6 +780,30 @@ function renderRentTab(r, tenant) {
       `}
     </div>
   `;
+}
+
+// Owner dashboard card: recent tenant payments received through Razorpay, or a
+// reminder of how to switch online payments on.
+function renderOnlinePaymentsCard(d) {
+  if (!d.onlinePaymentsEnabled) {
+    return `<div class="card"><h3>Online payments</h3><p class="profile-note">Tenants can't pay online yet. Add <code>RAZORPAY_KEY_ID</code> and <code>RAZORPAY_KEY_SECRET</code> from your Razorpay dashboard to your Railway variables to show a <strong>Pay</strong> button on every pending bill in the tenant portal. Payments settle to the bank account linked to your Razorpay account.</p></div>`;
+  }
+  const kindLabel = { rent: "Rent", electricity: "Electricity", gas: "Gas" };
+  const rows = (cache.payments || []).map((p) => `
+    <tr>
+      <td class="text">${esc(new Date(p.paidAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }))}</td>
+      <td class="text">${esc(p.tenantName)}${p.roomLabel ? `<br><small>${esc(p.roomLabel)}</small>` : ""}</td>
+      <td class="text">${p.items.map((i) => `${kindLabel[i.kind] || i.kind} ${MONTHS[i.month] || ""} ${i.year || ""}`).map(esc).join("<br>")}</td>
+      <td>${fmtMoney(p.amount)}</td>
+      <td class="text"><small>${esc(p.method || "")}<br>${esc(p.razorpayPaymentId || "")}</small></td>
+    </tr>`).join("");
+  return `<div class="card"><h3>Online payments received <small style="font-weight:400">via Razorpay</small></h3>${rows ? `<table class="ledger"><thead><tr><th>Date</th><th>Tenant</th><th>Bills</th><th>Amount</th><th>Method / ID</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty-state">No online payments yet. Tenants will see a Pay button on each pending bill.</div>`}</div>`;
+}
+
+// Small note under a bill's period when the tenant paid it through Razorpay.
+function onlinePaymentNote(e) {
+  if (!e.onlinePayment) return "";
+  return `<br><small class="paid-online">✓ Paid online · ${esc(e.onlinePayment.paymentId || "")}</small>`;
 }
 
 function renderElectricityTab(r, tenant) {
@@ -742,7 +846,7 @@ function renderElectricityTab(r, tenant) {
           <tbody>
             ${cache.electricity.map((e) => `
               <tr>
-                <td class="text">${MONTHS[e.month]} ${e.year}</td>
+                <td class="text">${MONTHS[e.month]} ${e.year}${onlinePaymentNote(e)}</td>
                 <td>${e.prevReading}</td>
                 <td>${e.currReading}</td>
                 <td>${e.unitsConsumed}</td>
@@ -845,7 +949,7 @@ function renderGasTab(r, tenant) {
           <tbody>
             ${cache.gas.map((e) => `
               <tr>
-                <td class="text">${MONTHS[e.month]} ${e.year}${gasSubtitle(e)}</td>
+                <td class="text">${MONTHS[e.month]} ${e.year}${gasSubtitle(e)}${onlinePaymentNote(e)}</td>
                 <td>${fmtMoney(e.amount)}</td>
                 <td><span class="stamp ${e.status}">${e.status}</span></td>
                 <td style="white-space:nowrap;">
