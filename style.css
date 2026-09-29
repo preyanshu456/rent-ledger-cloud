@@ -652,3 +652,70 @@ input:focus, select:focus, textarea:focus {
 .install-guide strong { display: block; color: #184e5a; font-size: 13px; }
 .install-guide small { display: block; margin-top: 3px; color: #66828a; font-size: 11px; line-height: 1.45; }
 .install-guide button { justify-self: start; border: 1px solid rgba(41,122,137,.28); border-radius: 9px; padding: 8px 12px; color: #176275; font: 600 12px/1 'IBM Plex Sans', sans-serif; background: rgba(236,251,251,.63); cursor: pointer; }
+
+/* ---------- Online payments (Razorpay) ---------- */
+/* #app is a flex row (sidebar + main) for owners; let the tenant page use the full width. */
+.tenant-shell { flex: 1; min-width: 0; width: 100%; }
+.tenant-hero { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 1000px) and (min-width: 801px) {
+  .tenant-hero { grid-template-columns: repeat(2, 1fr); row-gap: 14px; }
+  .tenant-hero > div:nth-child(2n) { border-right: 0; }
+  .tenant-hero > div:nth-child(odd) { padding-left: 0; }
+}
+.tenant-bills { grid-template-columns: repeat(auto-fit, minmax(330px, 1fr)); }
+.bill-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.btn.pay-btn { white-space: nowrap; }
+.paid-online { color: var(--paid-green, #338b79); font-weight: 600; font-size: 12px; white-space: nowrap; }
+small.paid-online { font-size: 10px; font-weight: 500; }
+.pay-all-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 22px; }
+.pay-all-card > div { display: grid; gap: 4px; }
+.pay-all-card strong { font-family: var(--font-display); font-size: 28px; color: var(--ink); }
+.pay-all-card small { color: #5c7d85; font-size: 12px; }
+.pay-all-card.muted strong { color: var(--due-red, #ca6761); }
+@media (max-width: 800px) {
+  .tenant-hero { grid-template-columns: 1fr; }
+  .tenant-bills { grid-template-columns: 1fr; }
+  .pay-all-card { flex-direction: column; align-items: stretch; }
+  .pay-all-card .btn { width: 100%; min-height: 46px; font-size: 15px; }
+}
+/* Tenant bill tables are stacked rows at every width so the Pay button never gets cut off. */
+.tenant-ledger thead { display: none; }
+.tenant-ledger, .tenant-ledger tbody { display: block; width: 100%; }
+.tenant-ledger tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "period amount" "status actions"; gap: 8px 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+.tenant-ledger td, .tenant-ledger td:first-child { display: block; padding: 0 !important; border: 0 !important; position: static !important; box-shadow: none !important; background: none !important; white-space: normal; }
+.tenant-ledger tr:hover td, .tenant-ledger tr:hover td:first-child { background: none !important; }
+.tenant-ledger td:nth-child(1) { grid-area: period; font-weight: 600; }
+.tenant-ledger td:nth-child(2) { grid-area: amount; text-align: right; font-weight: 600; }
+.tenant-ledger td:nth-child(3) { grid-area: status; }
+.tenant-ledger td:nth-child(4) { grid-area: actions; }
+.tenant-ledger td[colspan] { grid-column: 1 / -1; grid-area: auto; }
+.tenant-ledger .bill-actions { justify-content: flex-end; }
+.tenant-ledger .bill-actions .btn { min-height: 38px; }
+
+/* ---------- Gas bill entry helpers ---------- */
+a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+.gas-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bill-link-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-top: 14px; }
+.bill-link-form .form-field { flex: 1 1 260px; min-width: 0; }
+.gas-due-card { border-left: 4px solid var(--brass, #d99252) !important; }
+.gas-due-card h3 { margin-bottom: 6px; }
+.quick-gas-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 12px; }
+.quick-gas-form .form-field { flex: 0 1 220px; min-width: 0; }
+.meter-code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12.5px; }
+.table-scroll { overflow-x: auto; }
+.gas-todo h3 small { font: 400 11px var(--font-mono, ui-monospace, monospace); color: var(--teal-mid, #387785); margin-left: 8px; }
+.gas-todo-table td { vertical-align: middle; }
+.gas-todo-table a { color: var(--teal-deep, #174d5b); font-weight: 600; white-space: nowrap; }
+.gas-amount-input { width: 100%; max-width: 160px; padding: 8px 10px; }
+@media (max-width: 800px) {
+  .gas-todo-table thead { display: none; }
+  .gas-todo-table, .gas-todo-table tbody { display: block; width: 100%; }
+  .gas-todo-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "room amount" "meter link"; gap: 8px 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .gas-todo-table td, .gas-todo-table td:first-child { display: block; padding: 0 !important; border: 0 !important; position: static !important; box-shadow: none !important; background: none !important; }
+  .gas-todo-table tr:hover td, .gas-todo-table tr:hover td:first-child { background: none !important; }
+  .gas-todo-table td:nth-child(1) { grid-area: room; }
+  .gas-todo-table td:nth-child(2) { grid-area: meter; }
+  .gas-todo-table td:nth-child(3) { grid-area: link; text-align: right; }
+  .gas-todo-table td:nth-child(4) { grid-area: amount; }
+  .gas-amount-input { max-width: 130px; }
+}
