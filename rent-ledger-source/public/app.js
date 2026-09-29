@@ -118,11 +118,254 @@ async function openReceipt(receiptId) {
 
 function toast(msg, isError) {
   const root = document.getElementById("toast-root");
+  if (!root) return;
+  root.setAttribute("role", "status");
+  root.setAttribute("aria-live", "polite");
   const el = document.createElement("div");
   el.className = "toast" + (isError ? " error" : "");
-  el.textContent = msg;
+  el.innerHTML = `<span class="toast-icon" aria-hidden="true">${isError ? "!" : "✓"}</span><span class="toast-text"></span>`;
+  el.querySelector(".toast-text").textContent = msg;
   root.appendChild(el);
-  setTimeout(() => el.remove(), 3200);
+  const leave = () => {
+    if (el.classList.contains("is-leaving")) return;
+    el.classList.add("is-leaving");
+    setTimeout(() => el.remove(), 260);
+  };
+  const timer = setTimeout(leave, isError ? 5200 : 3400);
+  el.onclick = () => { clearTimeout(timer); leave(); };
+  // Keep the stack short: the oldest toast steps aside when a fourth arrives.
+  const visible = root.querySelectorAll(".toast:not(.is-leaving)");
+  if (visible.length > 3) { visible[0].classList.add("is-leaving"); setTimeout(() => visible[0].remove(), 260); }
+}
+
+// ---------- motion & feedback ----------
+// The whole app re-renders from HTML strings, so motion is applied deliberately:
+// page transitions only when the page actually changes, scroll kept in place on
+// in-page updates, newly opened forms slide in, and every click gets feedback.
+const ui = { pageKey: null, tabKey: null, formKeys: new Set(), tabIndicator: null, mounted: false, renderSeq: 0 };
+const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function currentPageKey() {
+  if (!session) return "auth";
+  if (session.user.role === "tenant") return `tenant:${state.tenantView}`;
+  return `owner:${state.view}:${state.buildingId || ""}:${state.roomId || ""}`;
+}
+
+// Thin bar along the top while the app waits on the server. It only appears if
+// the wait is noticeable, so quick updates don't flicker.
+let progressTimer = null;
+function progressStart() {
+  clearTimeout(progressTimer);
+  progressTimer = setTimeout(() => {
+    let bar = document.getElementById("progress-bar");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "progress-bar";
+      bar.setAttribute("aria-hidden", "true");
+      document.body.appendChild(bar);
+    }
+    bar.className = "is-active";
+  }, 140);
+}
+function progressDone() {
+  clearTimeout(progressTimer);
+  const bar = document.getElementById("progress-bar");
+  if (bar && bar.className === "is-active") {
+    bar.className = "is-done";
+    setTimeout(() => { if (bar.className === "is-done") bar.className = ""; }, 450);
+  }
+}
+
+// Disables a button and shows a small spinner until the work behind it settles.
+async function withBusy(el, work) {
+  if (!el || el.classList.contains("is-busy")) return;
+  const wasDisabled = el.disabled;
+  el.classList.add("is-busy");
+  el.setAttribute("aria-busy", "true");
+  if ("disabled" in el) el.disabled = true;
+  try {
+    return await work();
+  } finally {
+    if (el.isConnected) {
+      el.classList.remove("is-busy");
+      el.removeAttribute("aria-busy");
+      if ("disabled" in el) el.disabled = wasDisabled;
+    }
+  }
+}
+
+// In-app replacement for the browser's confirm box: animated, keyboard
+// friendly, and clear about what will happen.
+function confirmDialog(message, { title = "Are you sure?", confirmLabel = "Confirm", danger = false } = {}) {
+  return new Promise((resolve) => {
+    const previous = document.activeElement;
+    const wrap = document.createElement("div");
+    wrap.className = "confirm-backdrop";
+    wrap.innerHTML = `<div class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+      <span class="confirm-mark ${danger ? "is-danger" : ""}" aria-hidden="true">${danger ? "!" : "?"}</span>
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-message"></p>
+      <div class="confirm-actions">
+        <button type="button" class="btn secondary" data-confirm="no">Cancel</button>
+        <button type="button" class="btn ${danger ? "danger-solid" : ""}" data-confirm="yes"></button>
+      </div>
+    </div>`;
+    wrap.querySelector("#confirm-title").textContent = title;
+    wrap.querySelector("#confirm-message").textContent = message;
+    wrap.querySelector('[data-confirm="yes"]').textContent = confirmLabel;
+    document.body.appendChild(wrap);
+    const buttons = [...wrap.querySelectorAll("button")];
+    const close = (answer) => {
+      document.removeEventListener("keydown", onKey, true);
+      wrap.classList.add("is-leaving");
+      setTimeout(() => wrap.remove(), 200);
+      if (previous && previous.isConnected) previous.focus({ preventScroll: true });
+      resolve(answer);
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); close(false); }
+      if (e.key === "Tab") {
+        const i = buttons.indexOf(document.activeElement);
+        e.preventDefault();
+        buttons[(i + (e.shiftKey ? buttons.length - 1 : 1)) % buttons.length].focus();
+      }
+    };
+    wrap.addEventListener("click", (e) => {
+      if (e.target === wrap) return close(false);
+      const btn = e.target.closest("[data-confirm]");
+      if (btn) close(btn.dataset.confirm === "yes");
+    });
+    document.addEventListener("keydown", onKey, true);
+    requestAnimationFrame(() => wrap.querySelector(danger ? '[data-confirm="no"]' : '[data-confirm="yes"]').focus());
+  });
+}
+
+// Placeholder layout shown on the very first load instead of a blank page.
+function paintSkeleton(kind) {
+  const app = document.getElementById("app");
+  const sk = (w, h, radius = 10) => `<span class="sk" style="width:${w};height:${h};border-radius:${radius}px"></span>`;
+  if (kind === "tenant") {
+    app.innerHTML = `<div class="tenant-shell" aria-busy="true"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div></header><main class="tenant-main"><span class="sr-only">Loading your home…</span><div class="sk-stack">${sk("90px", "12px")}${sk("min(420px, 80%)", "40px")}${sk("180px", "14px")}</div><div class="sk-block">${sk("100%", "124px", 20)}</div><div class="sk-grid">${sk("100%", "220px", 16).repeat(3)}</div></main></div>`;
+  } else {
+    app.innerHTML = `<div class="sidebar"><div class="brand">Rent Ledger <span class="brand-mark">v1</span></div><div class="sk-stack sk-dark">${sk("85%", "34px", 9).repeat(4)}</div></div><div class="main" aria-busy="true"><span class="sr-only">Loading your dashboard…</span><div class="sk-stack">${sk("220px", "36px")}${sk("280px", "12px")}</div><div class="sk-grid sk-stats">${sk("100%", "96px", 16).repeat(8)}</div><div class="sk-block">${sk("100%", "240px", 16)}</div></div>`;
+  }
+}
+
+function formKey(form) {
+  return [form.dataset.submit, form.dataset.id, form.dataset.roomId, form.dataset.authorityId].join("|");
+}
+
+// Counts ₹ amounts and plain numbers up from zero when a page first opens.
+function countUp(el) {
+  const text = el.textContent.trim();
+  const match = /^(₹)?(\d[\d,]*(?:\.\d+)?)$/.exec(text);
+  if (!match) return;
+  const target = Number(match[2].replace(/,/g, ""));
+  if (!target) return;
+  const decimals = (match[2].split(".")[1] || "").length;
+  const format = (v) => (match[1] || "") + v.toLocaleString("en-IN", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  const start = performance.now();
+  const duration = 750;
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3);
+    el.textContent = format(t < 1 ? Math.round(target * eased * 10 ** decimals) / 10 ** decimals : target);
+    if (t < 1) requestAnimationFrame(step);
+  };
+  el.textContent = format(0);
+  requestAnimationFrame(step);
+}
+
+// Sliding underline for the room tabs; glides from the previous tab when switching.
+function placeTabIndicator(root, animateFromPrevious) {
+  const row = root.querySelector(".tab-row");
+  const active = row?.querySelector(".tab-btn.active");
+  if (!row || !active) { ui.tabIndicator = null; return; }
+  const bar = document.createElement("span");
+  bar.className = "tab-indicator";
+  bar.setAttribute("aria-hidden", "true");
+  row.appendChild(bar);
+  row.classList.add("has-indicator");
+  const target = { x: active.offsetLeft, w: active.offsetWidth };
+  const from = animateFromPrevious && ui.tabIndicator ? ui.tabIndicator : target;
+  bar.style.width = `${from.w}px`;
+  bar.style.transform = `translateX(${from.x}px)`;
+  if (from !== target) {
+    void bar.offsetWidth;
+    bar.classList.add("is-moving");
+    bar.style.width = `${target.w}px`;
+    bar.style.transform = `translateX(${target.x}px)`;
+  }
+  ui.tabIndicator = target;
+}
+
+// Swaps in new markup with the right amount of motion for what changed.
+function paint(html, { pageChanged, tabChanged, after }) {
+  const app = document.getElementById("app");
+  const animate = !reducedMotion();
+  const scrollY = window.scrollY;
+  const sideScroll = app.querySelector(".sidebar-scroll");
+  const sideTop = sideScroll ? sideScroll.scrollTop : 0;
+  const sideLeft = sideScroll ? sideScroll.scrollLeft : 0;
+  const firstMount = !ui.mounted;
+  const previousForms = ui.formKeys;
+  const useTransition = pageChanged && !firstMount && animate && typeof document.startViewTransition === "function";
+
+  const swap = () => {
+    app.innerHTML = html;
+    const side = app.querySelector(".sidebar");
+    if (side && firstMount && animate) side.classList.add("sidebar-enter");
+    const newSide = app.querySelector(".sidebar-scroll");
+    if (newSide) { newSide.scrollTop = sideTop; newSide.scrollLeft = sideLeft; }
+    window.scrollTo({ top: pageChanged ? 0 : scrollY, left: 0, behavior: "instant" });
+    const main = app.querySelector(".main, .tenant-main");
+
+    // Page-level entrance: fade the page in and let its cards rise in sequence.
+    if (pageChanged && main && animate) {
+      if (!useTransition) main.classList.add("page-enter");
+      main.classList.add("is-entering");
+      setTimeout(() => main.classList.remove("is-entering"), 900);
+      app.querySelectorAll(".stat-card .stat-value, .tenant-hero strong, .pay-all-card strong").forEach(countUp);
+    }
+    if (tabChanged && animate) app.querySelector(".tab-panel")?.classList.add("tab-enter");
+    placeTabIndicator(app, tabChanged && animate);
+
+    // Keyboard access for the clickable rows and cards that aren't real buttons.
+    app.querySelectorAll("[data-nav]:not(button):not(a)").forEach((el) => {
+      el.setAttribute("tabindex", "0");
+      el.setAttribute("role", "button");
+    });
+
+    // Forms that just opened slide in, come into view, and get focus.
+    const forms = [...app.querySelectorAll("form[data-submit]")];
+    if (!pageChanged && !tabChanged && !firstMount) {
+      const opened = forms.filter((form) => !previousForms.has(formKey(form)));
+      opened.forEach((form) => (form.closest(".card") || form).classList.add("card-enter"));
+      const first = opened[0];
+      if (first) {
+        (first.closest(".card") || first).scrollIntoView({ block: "nearest", behavior: animate ? "smooth" : "auto" });
+        first.querySelector("input:not([type=hidden]):not([type=file]), select, textarea")?.focus({ preventScroll: true });
+      }
+    }
+    ui.formKeys = new Set(forms.map(formKey));
+    ui.mounted = true;
+    if (after) after();
+  };
+
+  if (useTransition) {
+    // The page area gets its own transition name only while a transition runs.
+    const root = document.documentElement;
+    root.classList.add("vt-page");
+    try {
+      const transition = document.startViewTransition(swap);
+      transition.finished.finally(() => root.classList.remove("vt-page"));
+    } catch {
+      root.classList.remove("vt-page");
+      swap();
+    }
+  } else {
+    swap();
+  }
 }
 
 // ---------- formatting ----------
@@ -154,8 +397,22 @@ async function loadCore() {
 
 // ---------- render dispatch ----------
 async function render() {
-  if (!session) { document.getElementById('app').innerHTML = renderAuth(); attachAuthHandlers(); return; }
+  const seq = ++ui.renderSeq;
+  const pageKey = currentPageKey();
+  const tabKey = `${pageKey}:${state.roomTab}`;
+  const pageChanged = pageKey !== ui.pageKey;
+  const tabChanged = !pageChanged && tabKey !== ui.tabKey;
+  const settle = () => { ui.pageKey = pageKey; ui.tabKey = tabKey; };
+
+  if (!session) {
+    document.getElementById('app').innerHTML = renderAuth();
+    attachAuthHandlers();
+    settle();
+    return;
+  }
   if (session.user.role === 'tenant') {
+    if (!cache.tenantPortal) paintSkeleton('tenant');
+    progressStart();
     try {
       if (!cache.tenantPortal || !cache.tenantLoadedAt || Date.now() - cache.tenantLoadedAt > 4_000) {
         cache.tenantPortal = await api('GET', '/api/tenant/portal');
@@ -163,9 +420,15 @@ async function render() {
       }
       if (state.tenantView === 'profile' && !cache.tenantProfile) cache.tenantProfile = await api('GET', '/api/account/profile');
     }
-    catch (e) { toast(e.message, true); logout(); return; }
-    document.getElementById('app').innerHTML = state.tenantView === 'profile' ? renderTenantProfile() : renderTenantPortal(); attachTenantHandlers(); return;
+    catch (e) { progressDone(); toast(e.message, true); logout(); return; }
+    progressDone();
+    if (seq !== ui.renderSeq) return;
+    paint(state.tenantView === 'profile' ? renderTenantProfile() : renderTenantPortal(), { pageChanged, tabChanged: false, after: attachTenantHandlers });
+    settle();
+    return;
   }
+  if (!ui.mounted) paintSkeleton('owner');
+  progressStart();
   try {
     await loadCore();
     if (state.view === 'profile' && !cache.profile) cache.profile = await api('GET', '/api/account/profile');
@@ -184,10 +447,10 @@ async function render() {
   } catch (e) {
     toast(e.message, true);
   }
-
-  const app = document.getElementById("app");
-  app.innerHTML = renderSidebar() + `<div class="main page-enter">${renderMain()}</div>`;
-  attachHandlers();
+  progressDone();
+  if (seq !== ui.renderSeq) return;
+  paint(renderSidebar() + `<div class="main">${renderMain()}</div>`, { pageChanged, tabChanged, after: attachHandlers });
+  settle();
 }
 
 function loginMarkup(role = 'owner') {
@@ -197,7 +460,7 @@ function loginMarkup(role = 'owner') {
 function renderAuth() {
   const serverSetup = isMobileApp ? `<form class="server-setup" data-server-url><label>Mac server address<input name="serverUrl" required value="${esc(apiBase())}" placeholder="http://192.168.1.20:4000"></label><button class="link-btn">Save server address</button><small>Connect your phone and Mac to the same Wi-Fi.</small></form>` : '';
   const installGuide = isMobileApp ? '' : `<div class="install-guide"><div><span class="install-guide-icon">⇩</span><div><strong>Use Rent Ledger like an app</strong><small>${esc(installHelpText())}</small></div></div><button type="button" data-install-app>Install app</button></div>`;
-  return `<div class="auth-shell"><section class="auth-art"><div class="brand auth-brand">Rent Ledger <span class="brand-mark">HOME</span></div><div class="auth-copy"><p class="kicker">PROPERTY, SIMPLIFIED</p><h1>A calmer way to manage every key.</h1><p>Keep rent, electricity, rooms and tenant records in one considered place.</p><div class="auth-pills"><span>◈ Owner command centre</span><span>◌ Private tenant billing</span></div></div><div class="auth-foot">Made for modern rental homes</div></section><section class="auth-panel"><div class="auth-card"><div class="role-switch"><button class="role-btn active" data-role="owner">Owner</button><button class="role-btn" data-role="tenant">Tenant</button></div><div id="auth-form">${loginMarkup()}</div>${installGuide}${serverSetup}</div></section></div>`;
+  return `<div class="auth-shell"><section class="auth-art"><div class="brand auth-brand">Rent Ledger <span class="brand-mark">HOME</span></div><div class="auth-copy"><p class="kicker">PROPERTY, SIMPLIFIED</p><h1>A calmer way to manage every key.</h1><p>Keep rent, electricity, rooms and tenant records in one considered place.</p><div class="auth-pills"><span>◈ Owner command centre</span><span>◌ Private tenant billing</span></div></div><div class="auth-foot">Made for modern rental homes</div></section><section class="auth-panel"><div class="auth-card"><div class="role-switch" data-active="owner"><button class="role-btn active" data-role="owner">Owner</button><button class="role-btn" data-role="tenant">Tenant</button></div><div id="auth-form">${loginMarkup()}</div>${installGuide}${serverSetup}</div></section></div>`;
 }
 
 function authForm(mode, role) {
@@ -211,6 +474,9 @@ function authForm(mode, role) {
   } else {
     form.innerHTML = loginMarkup(role);
   }
+  form.classList.remove('auth-swap');
+  void form.offsetWidth;
+  form.classList.add('auth-swap');
   // The form markup is dynamically replaced, so bind its new submit/toggle controls immediately.
   attachAuthHandlers();
 }
@@ -242,7 +508,7 @@ function renderTenantPortal() {
       : `<section class="card pay-all-card muted"><div><span class="kicker">TOTAL PENDING</span><strong>${fmtMoney(totalDue)}</strong><small>Online payment isn't enabled by your owner yet. Pay them directly and add a payment proof below.</small></div></section>`)
     : '';
   const table = (title, entries, type) => `<article class="card"><h3><span>${title}</span><small>Last 6 entries</small></h3><table class="ledger tenant-ledger"><thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Payment</th></tr></thead><tbody>${billRows(entries, type)}</tbody></table></article>`;
-  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><span>Welcome, <b>${esc(d.tenant.name)}</b></span><button class="tenant-profile-link" data-tenant-nav="profile">My profile</button><button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main page-enter"><p class="kicker">YOUR HOME</p><h1>${esc(d.building.name)}</h1><p class="tenant-address">${esc(d.room.label)} · Floor ${d.room.floorNumber}</p><section class="tenant-hero"><div><span>Monthly rent</span><strong>${fmtMoney(d.room.monthlyRent)}</strong><small>Your fixed monthly rental</small></div><div><span>Rent outstanding</span><strong class="${rentDue ? 'is-due' : ''}">${fmtMoney(rentDue)}</strong><small>${rentDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Electricity outstanding</span><strong class="${elecDue ? 'is-due' : ''}">${fmtMoney(elecDue)}</strong><small>${elecDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Gas outstanding</span><strong class="${gasDue ? 'is-due' : ''}">${fmtMoney(gasDue)}</strong><small>${gasDue ? 'Payment pending' : 'All caught up'}</small></div></section>${payAll}<section class="tenant-bills">${table('Rent history', d.rent, 'rent')}${table('Electricity bills', d.electricity, 'electricity')}${table('Gas bills', gasEntries, 'gas')}</section><input type="file" data-receipt-file accept="image/jpeg,image/png,image/webp,application/pdf" hidden></main></div>`;
+  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><span>Welcome, <b>${esc(d.tenant.name)}</b></span><button class="tenant-profile-link" data-tenant-nav="profile">My profile</button><button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main"><p class="kicker">YOUR HOME</p><h1>${esc(d.building.name)}</h1><p class="tenant-address">${esc(d.room.label)} · Floor ${d.room.floorNumber}</p><section class="tenant-hero"><div><span>Monthly rent</span><strong>${fmtMoney(d.room.monthlyRent)}</strong><small>Your fixed monthly rental</small></div><div><span>Rent outstanding</span><strong class="${rentDue ? 'is-due' : ''}">${fmtMoney(rentDue)}</strong><small>${rentDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Electricity outstanding</span><strong class="${elecDue ? 'is-due' : ''}">${fmtMoney(elecDue)}</strong><small>${elecDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Gas outstanding</span><strong class="${gasDue ? 'is-due' : ''}">${fmtMoney(gasDue)}</strong><small>${gasDue ? 'Payment pending' : 'All caught up'}</small></div></section>${payAll}<section class="tenant-bills">${table('Rent history', d.rent, 'rent')}${table('Electricity bills', d.electricity, 'electricity')}${table('Gas bills', gasEntries, 'gas')}</section><input type="file" data-receipt-file accept="image/jpeg,image/png,image/webp,application/pdf" hidden></main></div>`;
 }
 
 // ---------- online payments (Razorpay Checkout) ----------
@@ -308,16 +574,26 @@ function passwordCard() {
 }
 function renderTenantProfile() {
   const p = cache.tenantProfile;
-  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><button class="tenant-profile-link" data-tenant-nav="home">← My home</button><button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main page-enter"><p class="kicker">ACCOUNT</p><h1>My profile</h1><p class="tenant-address">Your account, tenancy and security settings.</p><section class="profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Tenant'], ['Member since', esc(displayDate(p.account.createdAt))]])}${profileCard('Your tenancy', [['Building', esc(p.home.buildingName)], ['Address', esc(p.home.buildingAddress || 'Not provided')], ['Room', esc(`${p.home.roomLabel} · Floor ${p.home.floorNumber}`)], ['Monthly rent', fmtMoney(p.home.monthlyRent)], ['Security deposit', fmtMoney(p.tenant.deposit)], ['Move-in date', esc(displayDate(p.tenant.moveInDate))]])}${profileCard('Contact & identity', [['Mobile number', esc(p.tenant.mobile || 'Not provided')], ['Alternative mobile', esc(p.tenant.altMobile || 'Not provided')], ['Email', esc(p.tenant.email || 'Not provided')], ['ID proof type', esc(p.tenant.idProofType || 'Not provided')]])}${passwordCard()}</section></main></div>`;
+  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><button class="tenant-profile-link" data-tenant-nav="home">← My home</button><button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main"><p class="kicker">ACCOUNT</p><h1>My profile</h1><p class="tenant-address">Your account, tenancy and security settings.</p><section class="profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Tenant'], ['Member since', esc(displayDate(p.account.createdAt))]])}${profileCard('Your tenancy', [['Building', esc(p.home.buildingName)], ['Address', esc(p.home.buildingAddress || 'Not provided')], ['Room', esc(`${p.home.roomLabel} · Floor ${p.home.floorNumber}`)], ['Monthly rent', fmtMoney(p.home.monthlyRent)], ['Security deposit', fmtMoney(p.tenant.deposit)], ['Move-in date', esc(displayDate(p.tenant.moveInDate))]])}${profileCard('Contact & identity', [['Mobile number', esc(p.tenant.mobile || 'Not provided')], ['Alternative mobile', esc(p.tenant.altMobile || 'Not provided')], ['Email', esc(p.tenant.email || 'Not provided')], ['ID proof type', esc(p.tenant.idProofType || 'Not provided')]])}${passwordCard()}</section></main></div>`;
 }
 
 function logout() { localStorage.removeItem('rentLedgerSession'); location.reload(); }
 function attachAuthHandlers() {
   document.querySelectorAll('[data-install-app]').forEach(btn => btn.onclick = requestAppInstall);
-  document.querySelectorAll('[data-role]').forEach(btn => btn.onclick = () => { document.querySelectorAll('[data-role]').forEach(x => x.classList.remove('active')); btn.classList.add('active'); authForm('login', btn.dataset.role); });
+  document.querySelectorAll('[data-role]').forEach(btn => btn.onclick = () => {
+    if (btn.classList.contains('active')) return;
+    document.querySelectorAll('[data-role]').forEach(x => x.classList.remove('active'));
+    btn.classList.add('active');
+    const roleSwitch = btn.closest('.role-switch');
+    if (roleSwitch) roleSwitch.dataset.active = btn.dataset.role;
+    authForm('login', btn.dataset.role);
+  });
   document.querySelectorAll('[data-auth-toggle]').forEach(btn => btn.onclick = () => authForm(btn.dataset.authToggle, document.querySelector('.role-btn.active')?.dataset.role || 'owner'));
-  document.querySelectorAll('form[data-auth]').forEach(form => form.onsubmit = async e => {
+  document.querySelectorAll('form[data-auth]').forEach(form => form.onsubmit = e => {
     e.preventDefault();
+    return withBusy(form.querySelector('button'), () => submitAuthForm(form));
+  });
+  async function submitAuthForm(form) {
     const data = Object.fromEntries(new FormData(form));
     try {
       if (form.dataset.auth === 'request-password-reset') {
@@ -335,7 +611,7 @@ function attachAuthHandlers() {
       localStorage.setItem('rentLedgerSession', JSON.stringify(result));
       location.reload();
     } catch (err) { toast(err.message, true); }
-  });
+  }
   document.querySelectorAll('form[data-server-url]').forEach(form => form.onsubmit = e => { e.preventDefault(); localStorage.setItem('rentLedgerApiBase', new FormData(form).get('serverUrl').trim()); toast('Server address saved'); });
   document.querySelectorAll('[data-logout]').forEach(btn => btn.onclick = logout);
 }
@@ -654,7 +930,7 @@ function renderRoomView() {
     <div class="page-title">${esc(r.label)} <span class="stamp ${r.status}" style="font-size:11px; vertical-align:middle; margin-left:8px;">${r.electricityOnly ? 'owner floor' : r.status}</span></div>
     <div class="page-sub">${r.electricityOnly ? `Floor ${r.floorNumber} · owner residence · electricity tracking only` : `Floor ${r.floorNumber} · ${fmtMoney(r.monthlyRent)}/mo rent · ${fmtMoney(r.deposit)} deposit`}</div>
     ${tabs}
-    ${body}
+    <div class="tab-panel">${body}</div>
   `;
 }
 
@@ -1055,6 +1331,11 @@ function attachHandlers() {
     const toggle = e.target.closest("[data-toggle-form]");
     if (toggle) {
       const key = toggle.dataset.toggleForm;
+      const closingCard = state.forms[key] ? toggle.closest(".card") : null;
+      if (closingCard && closingCard.querySelector("form") && !reducedMotion()) {
+        closingCard.classList.add("card-leave");
+        await new Promise((resolve) => setTimeout(resolve, 170));
+      }
       state.forms[key] = !state.forms[key];
       return render();
     }
@@ -1067,14 +1348,22 @@ function attachHandlers() {
     }
 
     const action = e.target.closest("[data-action]");
-    if (action) return handleAction(action);
+    if (action) return withBusy(action, () => handleAction(action));
+  };
+
+  app.onkeydown = (e) => {
+    if ((e.key === "Enter" || e.key === " ") && e.target.matches("[data-nav]:not(button):not(a)")) {
+      e.preventDefault();
+      e.target.click();
+    }
   };
 
   app.onsubmit = async (e) => {
     const form = e.target.closest("[data-submit]");
     if (!form) return;
     e.preventDefault();
-    return handleSubmit(form);
+    const submitButton = form.querySelector('button[type="submit"], button:not([type])');
+    return withBusy(submitButton || form, () => handleSubmit(form));
   };
 
   document.querySelectorAll('[data-authority-select]').forEach((select) => {
@@ -1095,21 +1384,21 @@ async function handleAction(el) {
       await copyText(el.dataset.text || "");
       return;
     } else if (act === "delete-building") {
-      if (!confirm("Delete this building and everything in it? This cannot be undone.")) return;
+      if (!(await confirmDialog("Every floor, room, tenant record, ledger entry and payment proof in this building will be removed. This can't be undone.", { title: "Delete this building?", confirmLabel: "Delete building", danger: true }))) return;
       await api("DELETE", `/api/buildings/${el.dataset.id}`);
       state.view = "dashboard"; state.buildingId = null;
       toast("Building deleted");
     } else if (act === "move-out") {
-      if (!confirm("Mark this tenant as moved out? Their login account, mobile numbers, email and ID-proof number will be removed permanently. Rent and bill history will be kept.")) return;
+      if (!(await confirmDialog("Their login, mobile numbers, email and ID-proof number will be removed permanently. Rent and bill history is kept.", { title: "Mark this tenant as moved out?", confirmLabel: "Move out", danger: true }))) return;
       await api("POST", `/api/tenants/${el.dataset.id}/move-out`, { moveOutDate: today() });
       toast("Tenant moved out; login and personal identifiers removed");
     } else if (act === 'delete-tenant') {
-      if (!confirm('Remove this previous tenant record permanently? Their login is removed. Rent and electricity history stays, but will no longer be linked to this tenant.')) return;
+      if (!(await confirmDialog("Their login is removed. Rent and bill history stays, but will no longer be linked to this tenant.", { title: "Remove this previous tenant?", confirmLabel: "Remove record", danger: true }))) return;
       await api('DELETE', `/api/tenants/${el.dataset.id}`);
       toast('Previous tenant record removed');
     } else if (act === 'delete-floor') {
       const count = Number(el.dataset.roomCount) || 0;
-      if (!confirm(`Delete Floor ${el.dataset.floorNumber} and its ${count} room${count === 1 ? '' : 's'}? All tenant records, rent/electricity ledgers and payment proofs in this floor will be permanently removed.`)) return;
+      if (!(await confirmDialog(`All ${count} room${count === 1 ? '' : 's'} on this floor, with their tenant records, ledgers and payment proofs, will be permanently removed.`, { title: `Delete Floor ${el.dataset.floorNumber}?`, confirmLabel: 'Delete floor', danger: true }))) return;
       await api('DELETE', `/api/buildings/${el.dataset.buildingId}/floors/${el.dataset.floorNumber}`);
       toast(`Floor ${el.dataset.floorNumber} deleted`);
     } else if (act === "view-receipt") {
@@ -1118,30 +1407,30 @@ async function handleAction(el) {
       await api("PUT", `/api/rent/${el.dataset.id}`, { amountPaid: Number(el.dataset.amount), paidDate: today() });
       toast("Rent marked as paid");
     } else if (act === "delete-rent") {
-      if (!confirm("Delete this rent entry?")) return;
+      if (!(await confirmDialog("This rent entry and any payment proof attached to it will be removed.", { title: "Delete this rent entry?", confirmLabel: "Delete", danger: true }))) return;
       await api("DELETE", `/api/rent/${el.dataset.id}`);
       toast("Entry deleted");
     } else if (act === "mark-elec-paid") {
       await api("PUT", `/api/electricity/${el.dataset.id}`, { paidDate: today() });
       toast("Electricity bill marked as paid");
     } else if (act === "delete-electricity") {
-      if (!confirm("Delete this electricity entry?")) return;
+      if (!(await confirmDialog("This electricity entry and any payment proof attached to it will be removed.", { title: "Delete this electricity entry?", confirmLabel: "Delete", danger: true }))) return;
       await api("DELETE", `/api/electricity/${el.dataset.id}`);
       toast("Entry deleted");
     } else if (act === "mark-gas-paid") {
       await api("PUT", `/api/gas/${el.dataset.id}`, { paidDate: today() });
       toast("Gas bill marked as paid");
     } else if (act === "delete-gas") {
-      if (!confirm("Delete this gas entry?")) return;
+      if (!(await confirmDialog("This gas bill and any payment proof attached to it will be removed.", { title: "Delete this gas bill?", confirmLabel: "Delete", danger: true }))) return;
       await api("DELETE", `/api/gas/${el.dataset.id}`);
       toast("Entry deleted");
     } else if (act === "unlink-gas-meter") {
-      if (!confirm("Unlink this gas meter? Past bill history is kept as-is.")) return;
+      if (!(await confirmDialog("You'll need to link a meter again before adding new gas bills. Past bills are kept as they are.", { title: "Unlink this gas meter?", confirmLabel: "Unlink meter" }))) return;
       await api("DELETE", `/api/rooms/${el.dataset.roomId}/gas-meter`);
       toast("Gas meter unlinked");
     }
     invalidateData(); cache.profile = null; cache.tenantProfile = null;
-    render();
+    await render();
   } catch (err) {
     toast(err.message, true);
   }
@@ -1232,7 +1521,7 @@ async function handleSubmit(form) {
       toast('Gas meter linked');
     }
     invalidateData(); cache.profile = null; cache.tenantProfile = null;
-    render();
+    await render();
   } catch (err) {
     toast(err.message, true);
   }

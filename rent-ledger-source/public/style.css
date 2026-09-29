@@ -719,3 +719,184 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
   .gas-todo-table td:nth-child(4) { grid-area: amount; }
   .gas-amount-input { max-width: 130px; }
 }
+
+/* =====================================================================
+   Motion & polish
+   The app re-renders whole views, so entrance animations are applied by
+   app.js only when something actually changes (a new page, a new tab, a
+   form that just opened). Everything here is transform/opacity based.
+   ===================================================================== */
+:root { --ease-out: cubic-bezier(.2, .8, .2, 1); --ease-spring: cubic-bezier(.34, 1.3, .5, 1); }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* Page entrances: only on navigation */
+.sidebar { animation: none; }
+.sidebar.sidebar-enter { animation: sidebar-in .42s var(--ease-out) both; }
+.page-enter { animation: page-in .38s var(--ease-out) both; }
+.profile-card { animation: none; }
+@keyframes page-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+.is-entering :is(.stat-card, .building-card, .room-card, .profile-card, .tenant-hero, .pay-all-card, .tenant-bills > .card) {
+  animation: rise .5s var(--ease-out) both;
+}
+.is-entering :is(.stat-card, .building-card, .room-card, .profile-card, .tenant-bills > .card):nth-child(2) { animation-delay: .04s; }
+.is-entering :is(.stat-card, .building-card, .room-card, .profile-card, .tenant-bills > .card):nth-child(3) { animation-delay: .08s; }
+.is-entering :is(.stat-card, .building-card, .room-card, .profile-card, .tenant-bills > .card):nth-child(4) { animation-delay: .12s; }
+.is-entering :is(.stat-card, .building-card, .room-card):nth-child(5) { animation-delay: .16s; }
+.is-entering :is(.stat-card, .building-card, .room-card):nth-child(6) { animation-delay: .2s; }
+.is-entering :is(.stat-card, .building-card, .room-card):nth-child(n+7) { animation-delay: .24s; }
+.is-entering .pay-all-card { animation-delay: .08s; }
+@keyframes rise { from { opacity: 0; transform: translateY(12px) scale(.99); } to { opacity: 1; transform: none; } }
+
+/* Cross-page transition (browsers with View Transitions) */
+html.vt-page .main, html.vt-page .tenant-main { view-transition-name: page; }
+::view-transition-group(page) { animation: none; }
+::view-transition-old(page) { animation: vt-out .16s ease-in both; }
+::view-transition-new(page) { animation: vt-in .38s var(--ease-out) both; }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; }
+@keyframes vt-out { to { opacity: 0; transform: translateY(-6px); } }
+@keyframes vt-in { from { opacity: 0; transform: translateY(10px); } }
+
+/* Desktop: the sidebar stays put while the page scrolls */
+@media (min-width: 861px) {
+  .sidebar { position: sticky; top: 0; height: 100vh; height: 100dvh; align-self: flex-start; }
+}
+
+/* Calmer hovers: only things you can click lift */
+.card:hover { transform: none; box-shadow: 0 18px 45px rgba(16, 79, 91, .14), inset 0 1px 0 rgba(255,255,255,.75) !important; }
+.stat-card:hover { transform: none; }
+.building-card, .room-card { transition: transform .28s var(--ease-out), box-shadow .28s ease; }
+.building-card:hover, .room-card:hover { transform: translateY(-3px); }
+.building-card:active, .room-card:active { transform: translateY(-1px) scale(.99); transition-duration: .1s; }
+.btn { transition: transform .2s var(--ease-out), box-shadow .2s ease, filter .2s ease, background-color .2s ease, color .2s ease !important; }
+.btn:active { transform: translateY(0) scale(.97); transition-duration: .08s !important; }
+input, select, textarea { transition: border-color .18s ease, box-shadow .18s ease, background-color .18s ease; }
+table.ledger tbody tr, table.ledger td { transition: background-color .18s ease; }
+.stamp { transition: background-color .3s ease, color .3s ease, border-color .3s ease; }
+.page-title, .tenant-main h1, .card h3 { text-wrap: balance; }
+:is(button, a, [role="button"]):focus-visible { outline: 2px solid var(--brass, #d99252); outline-offset: 2px; }
+[data-nav][role="button"] { cursor: pointer; }
+
+/* Room tabs: sliding underline and a soft panel change */
+.tab-row { position: relative; }
+.tab-btn { transition: color .2s ease, background-color .2s ease; border-radius: 8px 8px 0 0; }
+.tab-btn:hover { color: var(--ink); background: rgba(255,255,255,.35); }
+.tab-row.has-indicator .tab-btn.active { border-bottom-color: transparent; }
+.tab-indicator { position: absolute; left: 0; bottom: -1.5px; height: 3px; border-radius: 3px 3px 0 0; background: var(--brass); pointer-events: none; }
+.tab-indicator.is-moving { transition: transform .36s var(--ease-out), width .36s var(--ease-out); }
+.tab-panel.tab-enter { animation: tab-in .32s var(--ease-out) both; }
+@keyframes tab-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Forms opening and closing in place */
+.card-enter { animation: card-in .36s var(--ease-out) both; }
+.card-leave { animation: card-out .17s ease-in both; pointer-events: none; }
+@keyframes card-in { from { opacity: 0; transform: translateY(-8px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes card-out { to { opacity: 0; transform: translateY(-6px) scale(.985); } }
+
+/* Busy buttons */
+.is-busy { position: relative; pointer-events: none; }
+.is-busy:disabled { opacity: 1 !important; }
+button.is-busy { color: transparent !important; }
+button.is-busy::after {
+  content: ""; position: absolute; inset: 0; margin: auto; width: 15px; height: 15px; border-radius: 50%;
+  border: 2px solid rgba(23, 77, 91, .22); border-top-color: var(--teal-deep, #174d5b); animation: spin .7s linear infinite;
+}
+.btn:not(.secondary):not(.danger).is-busy::after { border-color: rgba(255,255,255,.35); border-top-color: #fff; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Top progress bar while waiting on the server */
+#progress-bar {
+  position: fixed; top: env(safe-area-inset-top, 0px); left: 0; right: 0; height: 3px; z-index: 1400; pointer-events: none;
+  transform-origin: 0 50%; transform: scaleX(0); opacity: 0;
+  background: linear-gradient(90deg, var(--brass, #d99252), #f3c486, var(--teal-mid, #387785));
+  box-shadow: 0 0 10px rgba(217, 146, 82, .45);
+}
+#progress-bar.is-active { opacity: 1; animation: progress-grow 6s cubic-bezier(.1, .7, .2, 1) forwards; }
+#progress-bar.is-done { opacity: 0; transform: scaleX(1); transition: transform .2s ease, opacity .3s ease .12s; }
+@keyframes progress-grow { 0% { transform: scaleX(0); } 15% { transform: scaleX(.4); } 100% { transform: scaleX(.92); } }
+
+/* Toasts */
+#toast-root { pointer-events: none; }
+.toast {
+  pointer-events: auto; cursor: pointer; display: flex; align-items: flex-start; gap: 10px;
+  border-left: 0; border-radius: 12px; padding: 11px 15px 11px 12px; line-height: 1.4;
+  box-shadow: 0 14px 34px rgba(12, 44, 54, .28); animation: toast-in .36s var(--ease-spring) both;
+}
+.toast.is-leaving { animation: toast-out .24s ease-in both; }
+.toast-icon {
+  flex: none; display: grid; place-items: center; width: 20px; height: 20px; margin-top: 0; border-radius: 50%;
+  background: var(--paid-green, #338b79); color: #fff; font: 700 11px/1 var(--font-body);
+}
+.toast.error .toast-icon { background: var(--due-red, #ca6761); }
+@keyframes toast-in { from { opacity: 0; transform: translateY(14px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateX(24px) scale(.98); } }
+
+/* Confirmation dialog (replaces the browser's confirm box) */
+.confirm-backdrop {
+  position: fixed; inset: 0; z-index: 1300; display: grid; place-items: center; padding: 20px;
+  background: rgba(9, 36, 45, .42); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  animation: fade-in .2s ease both;
+}
+.confirm-backdrop.is-leaving { animation: fade-out .18s ease both; }
+.confirm-dialog {
+  width: min(420px, 100%); display: grid; gap: 10px; padding: 24px; border-radius: 20px;
+  background: #f7fcfc; color: var(--ink); box-shadow: 0 30px 70px rgba(8, 40, 50, .35);
+  animation: pop-in .32s var(--ease-spring) both;
+}
+.confirm-backdrop.is-leaving .confirm-dialog { animation: pop-out .18s ease-in both; }
+.confirm-mark {
+  width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center;
+  font: 700 18px var(--font-display); background: rgba(56, 119, 133, .14); color: var(--teal-deep, #174d5b);
+}
+.confirm-mark.is-danger { background: rgba(202, 103, 97, .14); color: var(--due-red, #ca6761); }
+.confirm-dialog h2 { margin: 4px 0 0; font: 600 22px/1.25 var(--font-display); text-wrap: balance; }
+.confirm-dialog p { margin: 0; color: #4d6c74; font-size: 14px; line-height: 1.55; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.btn.danger-solid { background: linear-gradient(135deg, #c9584f, #a83f37) !important; color: #fff; border-color: transparent !important; box-shadow: 0 10px 22px rgba(168, 63, 55, .25) !important; }
+@keyframes pop-in { from { opacity: 0; transform: translateY(10px) scale(.95); } to { opacity: 1; transform: none; } }
+@keyframes pop-out { to { opacity: 0; transform: scale(.97); } }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
+@media (max-width: 520px) {
+  .confirm-backdrop { place-items: end center; padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .confirm-dialog { border-radius: 22px; animation-name: sheet-in; }
+  .confirm-actions .btn { flex: 1; min-height: 46px; }
+  @keyframes sheet-in { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: none; } }
+}
+
+/* First-load skeleton */
+.sk { display: block; max-width: 100%; background: linear-gradient(100deg, rgba(255,255,255,.35) 20%, rgba(255,255,255,.78) 40%, rgba(255,255,255,.35) 60%); background-size: 220% 100%; animation: shimmer 1.3s ease-in-out infinite; }
+.sk-dark .sk { background-image: linear-gradient(100deg, rgba(255,255,255,.07) 20%, rgba(255,255,255,.17) 40%, rgba(255,255,255,.07) 60%); }
+.sk-stack { display: grid; gap: 12px; margin-bottom: 26px; }
+.sk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 22px; }
+.tenant-main .sk-grid { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.sk-block { margin-bottom: 22px; }
+@keyframes shimmer { from { background-position: 160% 0; } to { background-position: -60% 0; } }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+/* Sign-in: sliding role pill and a soft form swap */
+.role-switch { position: relative; }
+.role-switch::before {
+  content: ""; position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 9px;
+  background: rgba(255,255,255,.82); box-shadow: 0 2px 10px rgba(24, 66, 77, .14); transition: transform .38s var(--ease-spring);
+}
+.role-switch[data-active="tenant"]::before { transform: translateX(100%); }
+.role-switch .role-btn { position: relative; z-index: 1; transition: color .2s ease; }
+.role-switch .role-btn.active { background: transparent !important; box-shadow: none !important; }
+#auth-form.auth-swap { animation: auth-swap .34s var(--ease-out) both; }
+@keyframes auth-swap { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+
+/* Readable destructive buttons and back links on the glass theme */
+.btn.danger {
+  background: rgba(255, 244, 242, .62) !important;
+  color: #a83f37 !important;
+  border: 1px solid rgba(168, 63, 55, .38) !important;
+  box-shadow: 0 6px 14px rgba(168, 63, 55, .08), inset 0 1px 0 rgba(255,255,255,.7) !important;
+}
+.btn.danger:hover { background: rgba(255, 232, 228, .85) !important; filter: none; }
+.btn.danger.is-busy::after { border-color: rgba(168, 63, 55, .25); border-top-color: #a83f37; }
+.nav-crumb {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: var(--teal-deep, #1f5a63); opacity: .75;
+  transition: opacity .18s ease, transform .18s var(--ease-out);
+}
+.nav-crumb:hover { opacity: 1; transform: translateX(-3px); }
