@@ -691,3 +691,31 @@ small.paid-online { font-size: 10px; font-weight: 500; }
 .tenant-ledger td[colspan] { grid-column: 1 / -1; grid-area: auto; }
 .tenant-ledger .bill-actions { justify-content: flex-end; }
 .tenant-ledger .bill-actions .btn { min-height: 38px; }
+
+/* ---------- Gas bill entry helpers ---------- */
+a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+.gas-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.bill-link-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; margin-top: 14px; }
+.bill-link-form .form-field { flex: 1 1 260px; min-width: 0; }
+.gas-due-card { border-left: 4px solid var(--brass, #d99252) !important; }
+.gas-due-card h3 { margin-bottom: 6px; }
+.quick-gas-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin-top: 12px; }
+.quick-gas-form .form-field { flex: 0 1 220px; min-width: 0; }
+.meter-code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12.5px; }
+.table-scroll { overflow-x: auto; }
+.gas-todo h3 small { font: 400 11px var(--font-mono, ui-monospace, monospace); color: var(--teal-mid, #387785); margin-left: 8px; }
+.gas-todo-table td { vertical-align: middle; }
+.gas-todo-table a { color: var(--teal-deep, #174d5b); font-weight: 600; white-space: nowrap; }
+.gas-amount-input { width: 100%; max-width: 160px; padding: 8px 10px; }
+@media (max-width: 800px) {
+  .gas-todo-table thead { display: none; }
+  .gas-todo-table, .gas-todo-table tbody { display: block; width: 100%; }
+  .gas-todo-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "room amount" "meter link"; gap: 8px 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule); }
+  .gas-todo-table td, .gas-todo-table td:first-child { display: block; padding: 0 !important; border: 0 !important; position: static !important; box-shadow: none !important; background: none !important; }
+  .gas-todo-table tr:hover td, .gas-todo-table tr:hover td:first-child { background: none !important; }
+  .gas-todo-table td:nth-child(1) { grid-area: room; }
+  .gas-todo-table td:nth-child(2) { grid-area: meter; }
+  .gas-todo-table td:nth-child(3) { grid-area: link; text-align: right; }
+  .gas-todo-table td:nth-child(4) { grid-area: amount; }
+  .gas-amount-input { max-width: 130px; }
+}
