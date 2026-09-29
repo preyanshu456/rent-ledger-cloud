@@ -754,17 +754,48 @@ app.get("/api/authorities", (req, res) => {
   res.json((db.authorities || []).slice().sort((a, b) => a.name.localeCompare(b.name)));
 });
 
+// The link to an authority's own "view / pay your bill" page, so the owner can
+// open it straight from the gas card. Only http(s) links are accepted.
+function cleanBillUrl(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  let url;
+  try { url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`); } catch { url = null; }
+  if (!url || !["http:", "https:"].includes(url.protocol) || !url.hostname.includes(".")) {
+    throw Object.assign(new Error("Enter a valid website link, e.g. https://www.iglonline.net"), { status: 400 });
+  }
+  return url.toString();
+}
+
 app.post("/api/authorities", (req, res) => {
   const db = loadDb();
   db.authorities = db.authorities || [];
   const name = String(req.body.name || "").trim();
   if (!name) return res.status(400).json({ error: "Enter a name for the authority." });
+  let billUrl;
+  try { billUrl = cleanBillUrl(req.body.billUrl); } catch (err) { return res.status(err.status).json({ error: err.message }); }
   const existing = db.authorities.find((a) => a.name.toLowerCase() === name.toLowerCase());
   if (existing) return res.status(200).json(existing);
-  const authority = { id: id(), name, createdAt: new Date().toISOString() };
+  const authority = { id: id(), name, billUrl, createdAt: new Date().toISOString() };
   db.authorities.push(authority);
   saveDb(db);
   res.status(201).json(authority);
+});
+
+app.put("/api/authorities/:id", (req, res) => {
+  const db = loadDb();
+  const authority = (db.authorities || []).find((a) => a.id === req.params.id);
+  if (!authority) return notFound(res, "Authority");
+  if (req.body.name !== undefined) {
+    const name = String(req.body.name || "").trim();
+    if (!name) return res.status(400).json({ error: "Enter a name for the authority." });
+    authority.name = name;
+  }
+  if (req.body.billUrl !== undefined) {
+    try { authority.billUrl = cleanBillUrl(req.body.billUrl); } catch (err) { return res.status(err.status).json({ error: err.message }); }
+  }
+  saveDb(db);
+  res.json(authority);
 });
 
 app.delete("/api/authorities/:id", (req, res) => {
@@ -1101,6 +1132,27 @@ app.get("/api/dashboard", (req, res) => {
   const allDueElec = db.electricityEntries.filter((e) => e.status !== "paid").length;
   const allDueGas = (db.gasEntries || []).filter((e) => e.status !== "paid").length;
 
+  // Rooms linked to a gas meter that don't have this month's bill entered yet —
+  // the owner's to-do list for reading bills off the gas company's site.
+  const gasBillsToEnter = db.rooms
+    .filter((room) => room.gasMeterId && room.gasAuthorityId)
+    .filter((room) => !(db.gasEntries || []).some((e) => e.roomId === room.id && e.month === month && e.year === year))
+    .map((room) => {
+      const authority = (db.authorities || []).find((a) => a.id === room.gasAuthorityId);
+      const building = db.buildings.find((b) => b.id === room.buildingId);
+      const tenant = db.tenants.find((t) => t.roomId === room.id && t.active);
+      return {
+        roomId: room.id,
+        roomLabel: room.label,
+        buildingName: building?.name || "",
+        meterId: room.gasMeterId,
+        authorityName: authority?.name || "Unknown authority",
+        billUrl: authority?.billUrl || "",
+        tenantId: tenant?.id || null,
+        tenantName: tenant?.name || "",
+      };
+    });
+
   res.json({
     totalBuildings,
     totalRooms,
@@ -1117,6 +1169,7 @@ app.get("/api/dashboard", (req, res) => {
     outstandingRentEntries: allDueRent,
     outstandingElectricityEntries: allDueElec,
     outstandingGasEntries: allDueGas,
+    gasBillsToEnter,
     onlinePaymentsEnabled: razorpayConfigured(),
   });
 });
@@ -1170,14 +1223,26 @@ const DEFAULT_AUTHORITIES = [
   "Bangalore Electricity Supply Company Limited (BESCOM)",
 ];
 
+// Common piped-gas suppliers, with the official page where a customer views or
+// pays their bill. The owner can add others (and their links) from the app.
+const DEFAULT_GAS_AUTHORITIES = [
+  { name: "Indraprastha Gas Limited (IGL)", billUrl: "https://www.iglonline.net/electronic-payment" },
+  { name: "Mahanagar Gas Limited (MGL)", billUrl: "https://www.mahanagargas.com/quick-bill-pay" },
+  { name: "Maharashtra Natural Gas Limited (MNGL)", billUrl: "https://mngl.in/pay-bill" },
+];
+
 function seedDefaultAuthorities() {
   const db = loadDb();
   db.authorities = db.authorities || [];
   let changed = false;
-  for (const name of DEFAULT_AUTHORITIES) {
-    const exists = db.authorities.some((a) => a.name.toLowerCase() === name.toLowerCase());
-    if (!exists) {
-      db.authorities.push({ id: id(), name, createdAt: new Date().toISOString() });
+  const defaults = [...DEFAULT_AUTHORITIES.map((name) => ({ name, billUrl: "" })), ...DEFAULT_GAS_AUTHORITIES];
+  for (const { name, billUrl } of defaults) {
+    const existing = db.authorities.find((a) => a.name.toLowerCase() === name.toLowerCase());
+    if (!existing) {
+      db.authorities.push({ id: id(), name, billUrl, createdAt: new Date().toISOString() });
+      changed = true;
+    } else if (billUrl && !existing.billUrl) {
+      existing.billUrl = billUrl;
       changed = true;
     }
   }
