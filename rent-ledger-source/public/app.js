@@ -8,6 +8,89 @@ const state = {
   forms: {}, // toggle flags e.g. forms.addBuilding = true
 };
 
+// ---------- colour themes ----------
+// The palettes themselves live in style.css (html[data-theme]); this list is
+// for the picker swatches, the browser bar colour and Razorpay Checkout.
+const THEMES = [
+  { id: 'indigo', name: 'Indigo', bar: '#424591', sidebar: '#32325d', primary: '#4e58af', warm: '#f69769' },
+  { id: 'teal', name: 'Teal', bar: '#0b5968', sidebar: '#0c3e4c', primary: '#146f7b', warm: '#e7a25e' },
+  { id: 'ocean', name: 'Ocean', bar: '#185188', sidebar: '#1a385d', primary: '#1b66a3', warm: '#e8a25f' },
+  { id: 'forest', name: 'Forest', bar: '#175d3e', sidebar: '#0b422d', primary: '#2a734b', warm: '#d1af52' },
+  { id: 'plum', name: 'Plum', bar: '#74365d', sidebar: '#53263f', primary: '#8c4676', warm: '#e2a559' },
+  { id: 'slate', name: 'Graphite', bar: '#445061', sidebar: '#303845', primary: '#546477', warm: '#eaa059' },
+];
+const DEFAULT_THEME = 'indigo';
+function themeInfo(id) { return THEMES.find((t) => t.id === id) || THEMES.find((t) => t.id === DEFAULT_THEME); }
+function currentThemeId() { return themeInfo(document.documentElement.dataset.theme).id; }
+function applyTheme(id) {
+  const theme = themeInfo(id);
+  document.documentElement.dataset.theme = theme.id;
+  let bar = document.querySelector('meta[name="theme-color"]');
+  if (!bar) { bar = document.createElement('meta'); bar.name = 'theme-color'; document.head.appendChild(bar); }
+  bar.content = theme.bar;
+  return theme;
+}
+function savedTheme() { try { return localStorage.getItem('rentLedgerTheme') || DEFAULT_THEME; } catch { return DEFAULT_THEME; } }
+applyTheme(savedTheme());
+// Scenery behind the glass: sky, sun, clouds, city skyline and glass bubbles. Decorative only.
+(() => {
+  if (document.querySelector('.scenery')) return;
+  const scene = document.createElement('div');
+  scene.className = 'scenery';
+  scene.setAttribute('aria-hidden', 'true');
+  scene.innerHTML = '<div class="sc-sky"></div><div class="sc-sun"></div><div class="sc-cloud c1"></div><div class="sc-cloud c2"></div><div class="sc-cloud c3"></div><div class="sc-city back"></div><div class="sc-city front"></div><div class="sc-haze"></div><div class="sc-orb o1"></div><div class="sc-orb o2"></div><div class="sc-orb o3"></div><div class="sc-grain"></div>';
+  document.body.prepend(scene);
+})();
+function themeSwatchStyle(t) { return `background:linear-gradient(135deg, ${t.sidebar}, ${t.primary});--sw-warm:${t.warm}`; }
+function themePicker() {
+  const active = currentThemeId();
+  return `<article class="card profile-card appearance-card"><h3>Appearance <small>this device</small></h3><p class="profile-note">Choose a colour theme. It changes the whole app on this device and is remembered next time.</p><div class="theme-grid" role="group" aria-label="Colour theme">${THEMES.map((t) => `<button type="button" class="theme-option" data-theme-pick="${t.id}" aria-pressed="${t.id === active}"><span class="theme-swatch" style="${themeSwatchStyle(t)}"></span><span class="theme-name">${t.name}</span></button>`).join('')}</div></article>`;
+}
+function sidebarThemeDots() {
+  const active = currentThemeId();
+  return `<div class="sidebar-themes" role="group" aria-label="Colour theme"><span>Theme</span>${THEMES.map((t) => `<button type="button" class="theme-dot" data-theme-pick="${t.id}" aria-pressed="${t.id === active}" title="${t.name}" aria-label="${t.name} theme" style="background:linear-gradient(135deg, ${t.primary} 55%, ${t.warm} 56%)"></button>`).join('')}</div>`;
+}
+function pickTheme(id) {
+  if (id === currentThemeId()) return;
+  try { localStorage.setItem('rentLedgerTheme', id); } catch {}
+  const swap = () => {
+    const theme = applyTheme(id);
+    document.querySelectorAll('[data-theme-pick]').forEach((el) => el.setAttribute('aria-pressed', String(el.dataset.themePick === theme.id)));
+  };
+  const root = document.documentElement;
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (document.startViewTransition && !reduce) {
+    root.classList.add('vt-theme');
+    try { document.startViewTransition(swap).finished.finally(() => root.classList.remove('vt-theme')); }
+    catch { root.classList.remove('vt-theme'); swap(); }
+  } else {
+    swap();
+  }
+  toast(`${themeInfo(id).name} theme on`);
+}
+// Liquid glass: a soft highlight follows the pointer across glass surfaces.
+(() => {
+  if (!matchMedia('(hover: hover) and (pointer: fine)').matches) return;
+  const GLASS = '.card, .stat-card, .building-card, .room-card, .profile-card';
+  let frame = 0, last = null;
+  addEventListener('pointermove', (event) => {
+    last = event;
+    if (frame) return;
+    frame = requestAnimationFrame(() => {
+      frame = 0;
+      const el = last.target instanceof Element ? last.target.closest(GLASS) : null;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      el.style.setProperty('--mx', `${(((last.clientX - r.left) / r.width) * 100).toFixed(1)}%`);
+      el.style.setProperty('--my', `${(((last.clientY - r.top) / r.height) * 100).toFixed(1)}%`);
+    });
+  }, { passive: true });
+})();
+document.addEventListener('click', (event) => {
+  const pick = event.target.closest('[data-theme-pick]');
+  if (pick) pickTheme(pick.dataset.themePick);
+});
+
 const session = JSON.parse(localStorage.getItem('rentLedgerSession') || 'null');
 const authState = { resetContact: '' };
 const tenantReceiptState = { kind: '', entryId: '' };
@@ -544,7 +627,7 @@ async function startTenantPayment(body, button) {
         name: order.name,
         description: order.description,
         prefill: order.prefill,
-        theme: { color: '#0b5968' },
+        theme: { color: themeInfo(currentThemeId()).bar },
         handler: async (response) => {
           try {
             const result = await api('POST', '/api/tenant/payments/verify', response);
@@ -574,7 +657,7 @@ function passwordCard() {
 }
 function renderTenantProfile() {
   const p = cache.tenantProfile;
-  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><button class="tenant-profile-link" data-tenant-nav="home">← My home</button><button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main"><p class="kicker">ACCOUNT</p><h1>My profile</h1><p class="tenant-address">Your account, tenancy and security settings.</p><section class="profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Tenant'], ['Member since', esc(displayDate(p.account.createdAt))]])}${profileCard('Your tenancy', [['Building', esc(p.home.buildingName)], ['Address', esc(p.home.buildingAddress || 'Not provided')], ['Room', esc(`${p.home.roomLabel} · Floor ${p.home.floorNumber}`)], ['Monthly rent', fmtMoney(p.home.monthlyRent)], ['Security deposit', fmtMoney(p.tenant.deposit)], ['Move-in date', esc(displayDate(p.tenant.moveInDate))]])}${profileCard('Contact & identity', [['Mobile number', esc(p.tenant.mobile || 'Not provided')], ['Alternative mobile', esc(p.tenant.altMobile || 'Not provided')], ['Email', esc(p.tenant.email || 'Not provided')], ['ID proof type', esc(p.tenant.idProofType || 'Not provided')]])}${passwordCard()}</section></main></div>`;
+  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><button class="tenant-profile-link" data-tenant-nav="home">← My home</button><button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main"><p class="kicker">ACCOUNT</p><h1>My profile</h1><p class="tenant-address">Your account, tenancy and security settings.</p><section class="profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Tenant'], ['Member since', esc(displayDate(p.account.createdAt))]])}${profileCard('Your tenancy', [['Building', esc(p.home.buildingName)], ['Address', esc(p.home.buildingAddress || 'Not provided')], ['Room', esc(`${p.home.roomLabel} · Floor ${p.home.floorNumber}`)], ['Monthly rent', fmtMoney(p.home.monthlyRent)], ['Security deposit', fmtMoney(p.tenant.deposit)], ['Move-in date', esc(displayDate(p.tenant.moveInDate))]])}${profileCard('Contact & identity', [['Mobile number', esc(p.tenant.mobile || 'Not provided')], ['Alternative mobile', esc(p.tenant.altMobile || 'Not provided')], ['Email', esc(p.tenant.email || 'Not provided')], ['ID proof type', esc(p.tenant.idProofType || 'Not provided')]])}${passwordCard()}${themePicker()}</section></main></div>`;
 }
 
 function logout() { localStorage.removeItem('rentLedgerSession'); location.reload(); }
@@ -700,6 +783,7 @@ function renderSidebar() {
       <button class="sidebar-add" data-toggle-form="addBuilding">+ Add building</button>
       <button class="sidebar-profile ${state.view === 'profile' ? 'active' : ''}" data-nav="profile">◉ View your profile</button>
       <button class="sidebar-logout" data-action="logout">↪ Sign out</button>
+      ${sidebarThemeDots()}
     </div>
   `;
 }
@@ -715,7 +799,7 @@ function renderMain() {
 function renderOwnerProfile() {
   const p = cache.profile || { account: session.user, buildings: [] };
   const buildings = p.buildings.length ? p.buildings.map((building) => `<div class="profile-building"><div><strong>${esc(building.name)}</strong><span>${esc(building.address || 'No address on file')}</span></div><div><b>${building.occupiedRooms}/${building.rooms}</b><small>occupied · ${building.totalFloors || '—'} floors</small></div></div>`).join('') : '<p class="profile-note">No buildings added yet.</p>';
-  return `<div class="page-title">Your profile</div><div class="page-sub">Your account, buildings and security settings.</div><section class="profile-grid owner-profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Owner'], ['Member since', esc(displayDate(p.account.createdAt))]])}${passwordCard()}<article class="card profile-card profile-buildings"><h3>Your buildings <small>${p.buildings.length}</small></h3>${buildings}</article></section>`;
+  return `<div class="page-title">Your profile</div><div class="page-sub">Your account, buildings and security settings.</div><section class="profile-grid owner-profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Owner'], ['Member since', esc(displayDate(p.account.createdAt))]])}${passwordCard()}${themePicker()}<article class="card profile-card profile-buildings"><h3>Your buildings <small>${p.buildings.length}</small></h3>${buildings}</article></section>`;
 }
 
 // ---------- dashboard ----------
