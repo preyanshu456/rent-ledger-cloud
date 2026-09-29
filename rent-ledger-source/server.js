@@ -14,7 +14,9 @@ const RECEIPTS_DIR = path.join(DATA_DIR, "receipts");
 // Receipt images and PDFs are sent as base64 JSON so this deployment needs no
 // separate multipart-upload dependency.  The server still limits decoded files
 // to 10 MB below.
-app.use(express.json({ limit: '15mb' }));
+// rawBody is kept so Razorpay webhook signatures can be checked against the
+// exact bytes Razorpay sent (re-serialising the parsed JSON would not match).
+app.use(express.json({ limit: '15mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 // Browser clients use the same HTTPS origin in production. A native mobile wrapper can
 // be allowed explicitly with CORS_ORIGINS, rather than exposing the API to every origin.
 app.use((req, res, next) => {
@@ -41,6 +43,7 @@ function emptyDb() {
     gasEntries: [],
     passwordResetOtps: [],
     authorities: [],
+    payments: [],
   };
 }
 
@@ -273,7 +276,7 @@ app.get('/api/tenant/portal', auth, (req, res) => {
   const rent = db.rentEntries.filter(e => e.roomId === room.id && e.tenantId === tenant.id).sort((a,b) => b.year-a.year || b.month-a.month);
   const electricity = db.electricityEntries.filter(e => e.roomId === room.id && e.tenantId === tenant.id).sort((a,b) => b.year-a.year || b.month-a.month);
   const gas = (db.gasEntries || []).filter(e => e.roomId === room.id && e.tenantId === tenant.id).sort((a,b) => b.year-a.year || b.month-a.month);
-  res.json({ tenant: { name: tenant.name }, room: { label: room.label, floorNumber: room.floorNumber, monthlyRent: room.monthlyRent, gasMeterId: room.gasMeterId || '', gasAuthorityId: room.gasAuthorityId || null }, building: { name: building?.name || '' }, rent, electricity, gas });
+  res.json({ tenant: { name: tenant.name }, room: { label: room.label, floorNumber: room.floorNumber, monthlyRent: room.monthlyRent, gasMeterId: room.gasMeterId || '', gasAuthorityId: room.gasAuthorityId || null }, building: { name: building?.name || '' }, rent, electricity, gas, payments: { enabled: razorpayConfigured() } });
 });
 
 function uploadTenantReceipt(entryCollection) {
@@ -316,6 +319,213 @@ app.get('/api/receipts/:receiptId', auth, (req, res) => {
   res.type(receipt.mimeType);
   res.setHeader('Content-Disposition', `inline; filename="${receipt.originalName.replace(/["\\]/g, '')}"`);
   res.sendFile(receiptPath);
+});
+
+// ---------- Online payments (Razorpay) ----------
+// Tenants pay pending rent / electricity / gas bills through Razorpay Checkout.
+// Money settles into the Razorpay account whose keys are configured here — i.e.
+// the owner's Razorpay account and the bank account linked to it. Amounts are
+// always worked out on the server from the stored bills; the browser only says
+// *which* bills to pay, never how much.
+const RAZORPAY_API = 'https://api.razorpay.com/v1';
+const PAYABLE_COLLECTIONS = { rent: 'rentEntries', electricity: 'electricityEntries', gas: 'gasEntries' };
+const PAYABLE_LABELS = { rent: 'Rent', electricity: 'Electricity', gas: 'Gas' };
+const round2 = (value) => Math.round((Number(value) || 0) * 100) / 100;
+
+function razorpayConfigured() {
+  return Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
+}
+
+async function razorpayRequest(method, pathname, body) {
+  const authHeader = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64');
+  const response = await fetch(`${RAZORPAY_API}${pathname}`, {
+    method,
+    headers: { Authorization: `Basic ${authHeader}`, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.error?.description || `Razorpay request failed (${response.status})`);
+  return data;
+}
+
+function outstandingAmount(kind, entry) {
+  if (!entry || entry.status === 'paid') return 0;
+  if (kind === 'rent') return round2(Math.max((Number(entry.rentAmount) || 0) - (Number(entry.amountPaid) || 0), 0));
+  return round2(entry.amount);
+}
+
+function safeEqualText(a, b) {
+  const x = Buffer.from(String(a || ''), 'utf8');
+  const y = Buffer.from(String(b || ''), 'utf8');
+  return x.length > 0 && x.length === y.length && crypto.timingSafeEqual(x, y);
+}
+
+// Marks every bill covered by a payment as paid. Called from both the browser
+// callback and the webhook, so it only ever applies a payment once.
+function applyPayment(db, payment, razorpayPaymentId, method) {
+  if (!payment || payment.status === 'paid') return false;
+  const paidAt = new Date().toISOString();
+  const paidDate = paidAt.slice(0, 10);
+  for (const item of payment.items) {
+    const entry = (db[PAYABLE_COLLECTIONS[item.kind]] || []).find((candidate) => candidate.id === item.entryId);
+    if (!entry) { item.result = 'bill-deleted'; continue; }
+    if (entry.status === 'paid') { item.result = 'already-paid'; continue; }
+    if (item.kind === 'rent') {
+      const due = Number(entry.rentAmount) || 0;
+      entry.amountPaid = round2(Math.min(due, (Number(entry.amountPaid) || 0) + item.amount));
+      entry.status = entry.amountPaid <= 0 ? 'due' : entry.amountPaid < due ? 'partial' : 'paid';
+    } else {
+      entry.status = 'paid';
+    }
+    entry.paidDate = paidDate;
+    entry.onlinePayment = { provider: 'razorpay', paymentId: razorpayPaymentId, orderId: payment.razorpayOrderId, amount: item.amount, paidAt };
+    item.result = 'applied';
+  }
+  payment.status = 'paid';
+  payment.razorpayPaymentId = razorpayPaymentId;
+  payment.method = method || '';
+  payment.paidAt = paidAt;
+  return true;
+}
+
+function tenantPayableItems(db, tenant, requested) {
+  const items = [];
+  const seen = new Set();
+  const addItem = (kind, entry) => {
+    const key = `${kind}:${entry.id}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const amount = outstandingAmount(kind, entry);
+    if (amount > 0) items.push({ kind, entryId: entry.id, month: entry.month, year: entry.year, amount });
+  };
+  if (requested === 'all') {
+    for (const kind of Object.keys(PAYABLE_COLLECTIONS)) {
+      (db[PAYABLE_COLLECTIONS[kind]] || [])
+        .filter((entry) => entry.roomId === tenant.roomId && entry.tenantId === tenant.id)
+        .forEach((entry) => addItem(kind, entry));
+    }
+    return items;
+  }
+  for (const request of requested) {
+    const kind = request?.kind;
+    if (!PAYABLE_COLLECTIONS[kind]) throw Object.assign(new Error('Unknown bill type.'), { status: 400 });
+    const entry = (db[PAYABLE_COLLECTIONS[kind]] || []).find((candidate) => candidate.id === request.id);
+    if (!entry || entry.tenantId !== tenant.id || entry.roomId !== tenant.roomId) {
+      throw Object.assign(new Error('This bill is not available for your tenancy.'), { status: 404 });
+    }
+    addItem(kind, entry);
+  }
+  return items;
+}
+
+// Step 1: tenant picks bills → server totals them and opens a Razorpay order.
+app.post('/api/tenant/payments/order', auth, async (req, res) => {
+  if (req.user.role !== 'tenant') return res.status(403).json({ error: 'Tenant account required' });
+  if (!razorpayConfigured()) return res.status(503).json({ error: 'Online payments are not set up yet. Please ask your owner to enable Razorpay.' });
+  let db = loadDb();
+  const tenant = db.tenants.find((t) => t.id === req.user.tenantId && t.active);
+  if (!tenant) return res.status(404).json({ error: 'No active tenancy found' });
+  const room = db.rooms.find((r) => r.id === tenant.roomId);
+  const building = db.buildings.find((b) => b.id === room?.buildingId);
+
+  let items;
+  try {
+    items = tenantPayableItems(db, tenant, req.body?.all ? 'all' : (Array.isArray(req.body?.items) ? req.body.items : []));
+  } catch (err) {
+    return res.status(err.status || 400).json({ error: err.message });
+  }
+  if (!items.length) return res.status(400).json({ error: 'There is nothing pending to pay.' });
+  const amount = round2(items.reduce((sum, item) => sum + item.amount, 0));
+  const amountPaise = Math.round(amount * 100);
+  if (amountPaise < 100) return res.status(400).json({ error: 'Online payments must be at least ₹1.' });
+
+  const payment = {
+    id: id(), tenantId: tenant.id, roomId: tenant.roomId, items, amount, currency: 'INR',
+    status: 'created', createdAt: new Date().toISOString(),
+  };
+  const kinds = [...new Set(items.map((item) => PAYABLE_LABELS[item.kind]))].join(', ');
+  let order;
+  try {
+    order = await razorpayRequest('POST', '/orders', {
+      amount: amountPaise,
+      currency: 'INR',
+      receipt: payment.id,
+      notes: { paymentId: payment.id, tenant: tenant.name.slice(0, 200), room: String(room?.label || '').slice(0, 200), bills: kinds },
+    });
+  } catch (err) {
+    return res.status(502).json({ error: `Could not start the payment: ${err.message}` });
+  }
+  payment.razorpayOrderId = order.id;
+  // Re-read after the network call so a write made meanwhile isn't overwritten.
+  db = loadDb();
+  db.payments = db.payments || [];
+  db.payments.push(payment);
+  saveDb(db);
+  res.status(201).json({
+    keyId: process.env.RAZORPAY_KEY_ID,
+    orderId: order.id,
+    amount: amountPaise,
+    currency: 'INR',
+    name: building?.name || 'Rent Ledger',
+    description: `${kinds} · ${room?.label || 'your home'}`,
+    prefill: { name: tenant.name, contact: tenant.mobile || '', email: tenant.email || '' },
+  });
+});
+
+// Step 2: Razorpay Checkout hands the browser a signed result → we check the
+// signature, confirm with Razorpay that the money is captured, then mark bills paid.
+app.post('/api/tenant/payments/verify', auth, async (req, res) => {
+  if (req.user.role !== 'tenant') return res.status(403).json({ error: 'Tenant account required' });
+  if (!razorpayConfigured()) return res.status(503).json({ error: 'Online payments are not set up.' });
+  const orderId = String(req.body?.razorpay_order_id || '');
+  const paymentId = String(req.body?.razorpay_payment_id || '');
+  const signature = String(req.body?.razorpay_signature || '');
+  if (!/^order_[A-Za-z0-9]+$/.test(orderId) || !/^pay_[A-Za-z0-9]+$/.test(paymentId)) {
+    return res.status(400).json({ error: 'Invalid payment details.' });
+  }
+  const expected = crypto.createHmac('sha256', process.env.RAZORPAY_KEY_SECRET).update(`${orderId}|${paymentId}`).digest('hex');
+  if (!safeEqualText(expected, signature)) return res.status(400).json({ error: 'Payment verification failed.' });
+
+  let db = loadDb();
+  let payment = (db.payments || []).find((p) => p.razorpayOrderId === orderId);
+  if (!payment || payment.tenantId !== req.user.tenantId) return res.status(404).json({ error: 'Payment not found.' });
+  if (payment.status === 'paid') return res.json({ ok: true, amount: payment.amount, alreadyRecorded: true });
+
+  let razorpayPayment;
+  try {
+    razorpayPayment = await razorpayRequest('GET', `/payments/${paymentId}`);
+    if (razorpayPayment.order_id !== orderId) throw new Error('payment does not belong to this order');
+    if (Number(razorpayPayment.amount) !== Math.round(payment.amount * 100)) throw new Error('amount mismatch');
+    // Accounts set to manual capture leave payments "authorized" — capture them here.
+    if (razorpayPayment.status === 'authorized') {
+      razorpayPayment = await razorpayRequest('POST', `/payments/${paymentId}/capture`, { amount: razorpayPayment.amount, currency: razorpayPayment.currency });
+    }
+    if (razorpayPayment.status !== 'captured') throw new Error(`payment status is "${razorpayPayment.status}"`);
+  } catch (err) {
+    return res.status(502).json({ error: `We could not confirm this payment yet (${err.message}). If money was deducted, share payment ID ${paymentId} with your owner.` });
+  }
+
+  db = loadDb();
+  payment = (db.payments || []).find((p) => p.razorpayOrderId === orderId);
+  if (applyPayment(db, payment, paymentId, razorpayPayment.method)) saveDb(db);
+  res.json({ ok: true, amount: payment.amount, items: payment.items });
+});
+
+// Backup path: if the tenant closes the page right after paying, Razorpay's
+// webhook still tells us. Optional — only active when RAZORPAY_WEBHOOK_SECRET is set.
+app.post('/api/payments/razorpay/webhook', (req, res) => {
+  const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  if (!secret) return res.status(503).json({ error: 'Webhook is not configured.' });
+  const expected = crypto.createHmac('sha256', secret).update(req.rawBody || Buffer.alloc(0)).digest('hex');
+  if (!safeEqualText(expected, req.headers['x-razorpay-signature'])) return res.status(400).json({ error: 'Invalid signature.' });
+  const event = req.body?.event;
+  const entity = req.body?.payload?.payment?.entity;
+  if ((event === 'payment.captured' || event === 'order.paid') && entity?.order_id && entity.status === 'captured') {
+    const db = loadDb();
+    const payment = (db.payments || []).find((p) => p.razorpayOrderId === entity.order_id);
+    if (payment && Number(entity.amount) === Math.round(payment.amount * 100) && applyPayment(db, payment, entity.id, entity.method)) saveDb(db);
+  }
+  res.json({ ok: true });
 });
 
 // All management endpoints below are owner-only. Tenant accounts can only read their portal.
@@ -907,7 +1117,32 @@ app.get("/api/dashboard", (req, res) => {
     outstandingRentEntries: allDueRent,
     outstandingElectricityEntries: allDueElec,
     outstandingGasEntries: allDueGas,
+    onlinePaymentsEnabled: razorpayConfigured(),
   });
+});
+
+// Owner view of online payments received through Razorpay (most recent first).
+app.get("/api/payments", (req, res) => {
+  const db = loadDb();
+  const payments = (db.payments || [])
+    .filter((payment) => payment.status === "paid")
+    .sort((a, b) => String(b.paidAt).localeCompare(String(a.paidAt)))
+    .slice(0, Number(req.query.limit) || 20)
+    .map((payment) => {
+      const tenant = db.tenants.find((t) => t.id === payment.tenantId);
+      const room = db.rooms.find((r) => r.id === payment.roomId);
+      return {
+        id: payment.id,
+        amount: payment.amount,
+        paidAt: payment.paidAt,
+        method: payment.method,
+        razorpayPaymentId: payment.razorpayPaymentId,
+        tenantName: tenant?.name || "Former tenant",
+        roomLabel: room?.label || "",
+        items: payment.items,
+      };
+    });
+  res.json(payments);
 });
 
 // Fallback to the SPA for any non-API route
