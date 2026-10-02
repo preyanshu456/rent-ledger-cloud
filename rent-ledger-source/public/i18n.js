@@ -89,6 +89,22 @@
     'Document': 'दस्तावेज़', 'Added': 'जोड़ा गया', 'Total outstanding': 'कुल बकाया', 'Photos': 'फ़ोटो', 'Comment': 'टिप्पणी', 'Email for reminders': 'रिमाइंडर के लिए ईमेल',
     'No requests yet.': 'अभी कोई अनुरोध नहीं।', 'Nothing due right now.': 'अभी कुछ देय नहीं।', 'No payments recorded yet.': 'अभी कोई भुगतान दर्ज नहीं।',
     'No records yet': 'अभी कोई रिकॉर्ड नहीं', 'Properties': 'संपत्तियाँ',
+    // simpler layout
+    'Bills & payments': 'बिल और भुगतान', 'Repairs': 'मरम्मत', 'Settings': 'सेटिंग्स', 'More': 'और', 'More ▾': 'और ▾', 'Bank matching': 'बैंक मिलान',
+    'Profile': 'प्रोफ़ाइल', 'Rooms occupied': 'भरे हुए कमरे', 'Collected this month': 'इस महीने वसूला गया', 'Still to collect': 'वसूली बाकी',
+    'Show details': 'विवरण दिखाएँ', 'This month': 'इस महीने', 'Open bills (all months)': 'खुले बिल (सभी महीने)', 'Vacant rooms': 'खाली कमरे',
+    'Expenses this month': 'इस महीने के खर्च', 'Open Finance →': 'वित्त खोलें →', 'More actions': 'और कार्य',
+    'Every bill and payment in one place.': 'हर बिल और भुगतान एक जगह।',
+    'Upload a bank statement. Nothing is recorded until you confirm.': 'बैंक स्टेटमेंट अपलोड करें। आपकी पुष्टि के बिना कुछ दर्ज नहीं होता।',
+    'Agreements and end dates.': 'अनुबंध और समाप्ति तिथियाँ।', 'Nothing is sent until you approve.': 'आपकी मंज़ूरी के बिना कुछ नहीं भेजा जाता।',
+    'Requests from tenants and your own tasks.': 'किरायेदारों के अनुरोध और आपके अपने काम।', 'Print or save any report as PDF.': 'कोई भी रिपोर्ट प्रिंट करें या PDF में सहेजें।',
+    'Ask about your records. It only prepares things for you to approve.': 'अपने रिकॉर्ड के बारे में पूछें। यह केवल आपकी मंज़ूरी के लिए चीज़ें तैयार करता है।',
+    'Trends, plus an estimate for next month.': 'रुझान, और अगले महीने का अनुमान।', 'New repair request': 'नया मरम्मत अनुरोध', 'No repair requests here.': 'यहाँ कोई मरम्मत अनुरोध नहीं।',
+    'For your screens on this device.': 'इस डिवाइस पर आपकी स्क्रीन के लिए।', 'Online payments': 'ऑनलाइन भुगतान',
+    'Preview mode:': 'पूर्वावलोकन मोड:', 'only in-app messages are really delivered.': 'केवल ऐप के अंदर के संदेश ही सच में पहुँचते हैं।',
+    'Live:': 'चालू:', 'approved messages are sent.': 'मंज़ूर किए गए संदेश भेजे जाते हैं।',
+    'Basic mode:': 'बेसिक मोड:', 'answers come from built-in rules.': 'जवाब पहले से तय नियमों से आते हैं।',
+    'You can turn on AI in Settings.': 'आप सेटिंग्स में AI चालू कर सकते हैं।', 'The owner can turn on AI in Settings.': 'मालिक सेटिंग्स में AI चालू कर सकते हैं।',
   };
 
   const KEY = 'rentLedgerLang';
