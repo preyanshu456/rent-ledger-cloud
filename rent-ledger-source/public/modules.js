@@ -99,21 +99,44 @@
   X.changes['state'] = (el) => { const [view, key] = el.dataset.key.split('.'); s[view][key] = el.type === 'checkbox' ? el.checked : el.value; };
 
   // ---------- sidebar navigation ----------
-  const NAV = [
-    ['Overview', [['dashboard', 'Dashboard', null], ['finance', 'Finance', 'reports.view'], ['insights', 'Insights', 'reports.view']]],
-    ['Money', [['ledger', 'Ledger', 'reports.view'], ['reconciliation', 'Reconciliation', 'reconciliation.manage'], ['reports', 'Reports', 'reports.view']]],
-    ['Tenancy', [['leases', 'Leases', 'leases.manage'], ['reminders', 'Reminders', 'reminders.manage'], ['maintenance', 'Maintenance', 'maintenance.manage'], ['expenses', 'Expenses', 'expenses.manage']]],
-    ['Admin', [['assistant', 'Assistant', 'assistant.use'], ['notifications', 'Notifications', null], ['settings', 'Settings & team', null]]],
+  // The everyday sections stay in view; everything else sits under "More".
+  const NAV_MAIN = [
+    ['dashboard', 'Dashboard', null],
+    ['ledger', 'Bills & payments', 'reports.view'],
+    ['reminders', 'Reminders', 'reminders.manage'],
+    ['maintenance', 'Repairs', 'maintenance.manage'],
+    ['settings', 'Settings', null],
   ];
+  const NAV_MORE = [
+    ['finance', 'Finance', 'reports.view'],
+    ['leases', 'Leases', 'leases.manage'],
+    ['expenses', 'Expenses', 'expenses.manage'],
+    ['reconciliation', 'Bank matching', 'reconciliation.manage'],
+    ['reports', 'Reports', 'reports.view'],
+    ['insights', 'Insights', 'reports.view'],
+    ['assistant', 'Assistant', 'assistant.use'],
+  ];
+  const navAllowed = ([, , perm]) => !perm || can(perm);
+  const navLink = ([view, text]) => `<button type="button" class="side-link ${state.view === view ? 'active' : ''}" data-nav="${view}"><span>${h(text)}</span></button>`;
+  const MORE_KEY = 'rentLedgerNavMore';
+  const moreOpen = () => { if (X.moreOpen === undefined) { try { X.moreOpen = localStorage.getItem(MORE_KEY) === '1'; } catch { X.moreOpen = false; } } return X.moreOpen; };
   X.sidebarNav = () => {
-    const unread = X.unread ? `<span class="nav-count">${X.unread}</span>` : '';
-    return `<nav class="side-nav" aria-label="Sections">${NAV.map(([group, items]) => {
-      const visible = items.filter(([, , perm]) => !perm || can(perm));
-      if (!visible.length) return '';
-      return `<div class="side-group"><div class="side-group-label">${h(group)}</div>${visible.map(([view, text]) => `<button type="button" class="side-link ${state.view === view ? 'active' : ''}" data-nav="${view}"><span>${h(text)}</span>${view === 'notifications' ? unread : ''}</button>`).join('')}</div>`;
-    }).join('')}</nav>`;
+    const more = NAV_MORE.filter(navAllowed);
+    const open = moreOpen();
+    // When "More" is folded, the section you're on still shows.
+    const moreGroup = more.length ? `<div class="side-more ${open ? 'open' : ''}"><button type="button" class="side-link side-more-toggle" data-action="nav-more" aria-expanded="${open}"><span>More</span><span class="chev" aria-hidden="true">▾</span></button>${more.map(navLink).join('')}</div>` : '';
+    return `<nav class="side-nav" aria-label="Sections">${NAV_MAIN.filter(navAllowed).map(navLink).join('')}${moreGroup}</nav>`;
   };
-  X.sidebarFooter = () => (window.RL_I18N ? RL_I18N.picker() : '');
+  X.actions['nav-more'] = (el) => {
+    X.moreOpen = !moreOpen();
+    el.setAttribute('aria-expanded', String(X.moreOpen));
+    el.closest('.side-more')?.classList.toggle('open', X.moreOpen);
+    try { localStorage.setItem(MORE_KEY, X.moreOpen ? '1' : '0'); } catch { /* remembered for this visit only */ }
+    return false;
+  };
+  // Notifications: a bell next to the name, with the unread count.
+  X.sidebarBell = () => `<button type="button" class="side-bell ${state.view === 'notifications' ? 'active' : ''}" data-nav="notifications" title="Notifications" aria-label="Notifications${X.unread ? `, ${X.unread} unread` : ''}"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0"/></svg>${X.unread ? `<span class="nav-count">${X.unread}</span>` : ''}</button>`;
+  X.sidebarFooter = () => '';
 
   // Called before every owner/manager render.
   X.beforeOwnerRender = async () => {
@@ -126,9 +149,8 @@
   X.dashboardExtras = () => {
     const f = d.dashFinance;
     if (!f || !can('reports.view')) return '';
-    const t = f.totals;
-    return `<div class="card dash-finance"><h3><span>This month at a glance</span><button class="btn small secondary" data-nav="finance">Open Finance →</button></h3>
-      <div class="mini-stats"><div><span>Due this month</span><strong>${money(t.dueThisMonth)}</strong></div><div><span>Collected</span><strong>${money(t.collectedThisMonth)}</strong></div><div><span>Overdue (all)</span><strong class="${t.overdue ? 'is-due' : ''}">${money(t.overdue)}</strong></div><div><span>Expenses</span><strong>${money(t.expenses)}</strong></div></div></div>`;
+    // A short addition to the dashboard's "Show details" line.
+    return `<span class="dm-item">Expenses this month <b>${money(f.totals.expenses)}</b></span><span class="dm-item"><button type="button" class="link-btn" data-nav="finance">Open Finance →</button></span>`;
   };
   X.loadDashboardExtras = async () => {
     if (!can('reports.view')) return;
@@ -165,7 +187,7 @@
       ${card('By property', table(['Property', 'Billed', 'Received', 'Expenses', 'Net', 'Outstanding now'], f.byProperty.map((p) => [h(p.name), money(p.billed), money(p.received), money(p.expenses), money(p.net), money(p.outstanding)])))}
       ${card(`Tenant balances <small>${balances.length}</small>`, table(['Tenant', 'Room', 'Outstanding', 'Overdue', 'Credit', ''], balances.map((b) => [
         h(b.name) + (b.active ? '' : ' <small class="muted">(moved out)</small>'), `${h(b.buildingName)} ${h(b.roomLabel)}`, money(b.outstanding), b.overdue ? `<b class="is-due">${money(b.overdue)}</b>` : money(0), money(b.credit),
-        `<div class="row-actions"><button class="btn small secondary" data-action="open-page" data-url="/api/ledger/tenants/${b.tenantId}/statement?format=html">Statement</button><button class="btn small secondary" data-action="ledger-tenant" data-id="${b.tenantId}">Ledger</button><button class="btn small secondary" data-nav="tenancy" data-id="${b.tenantId}">Tenancy</button></div>`,
+        `<div class="row-actions"><button class="btn small secondary" data-action="open-page" data-url="/api/ledger/tenants/${b.tenantId}/statement?format=html">Statement</button><button class="btn small secondary" data-action="ledger-tenant" data-id="${b.tenantId}">Bills</button><button class="btn small secondary" data-nav="tenancy" data-id="${b.tenantId}">Tenancy</button></div>`,
       ]), { emptyText: 'Nobody owes anything right now.' }))}
       ${f.leaseExpiries.length ? card('Leases ending soon', table(['Tenant', 'Room', 'Ends', 'Days left'], f.leaseExpiries.map((l) => [h(l.tenantName), h(l.roomLabel), h(l.endDate), l.daysLeft < 0 ? `<b class="is-due">${l.daysLeft}</b>` : l.daysLeft]))) : ''}
       <p class="basis-note">${h(f.basis)}</p>`;
@@ -189,7 +211,7 @@
       ${l.tab === 'bills' ? field('Status', `<select data-ext-change="state" data-key="ledger.status">${[['open', 'Unpaid (open)'], ['', 'All'], ['overdue', 'Overdue'], ['partial', 'Partly paid'], ['paid', 'Paid'], ['waived', 'Waived'], ['void', 'Voided']].map(([v, t]) => opt(v, t, l.status)).join('')}</select>`) + field('Type', `<select data-ext-change="state" data-key="ledger.kind"><option value="">All types</option>${Object.entries(KINDS).map(([v, t]) => opt(v, t, l.kind)).join('')}</select>`) : ''}
     </div></div>`;
     const actions = `${can('payments.record') ? '<button class="btn" data-toggle-form="recordPayment">Record payment</button>' : ''}${can('bills.manage') ? '<button class="btn secondary" data-toggle-form="addCharge">Add charge</button>' : ''}<button class="btn secondary" data-action="download" data-url="/api/ledger/payments?format=csv" data-name="payments.csv">Payments CSV</button>`;
-    return `${page('Ledger', 'Every bill and payment. Paid history is never edited: corrections are recorded as adjustments, reversals or voids.', actions)}
+    return `${page('Bills & payments', 'Every bill and payment in one place.', actions)}
       ${state.forms.recordPayment ? recordPaymentForm() : ''}${state.forms.addCharge ? addChargeForm() : ''}
       ${tabs}${filters}${l.tab === 'payments' ? paymentsTable() : chargesTable()}`;
   };
@@ -294,7 +316,7 @@
         : t.status === 'ignored' ? `<button class="btn small secondary" data-action="recon-reopen" data-id="${t.id}">Reopen</button>` : '';
       return [h(t.date), `<b>${money(t.amount)}</b>`, `${h(t.payer || '')}<br><small class="muted">${h(t.description)}</small>`, h(t.reference || ''), stamp(t.status) + t.flags.map((f) => `<div class="flag">⚠ ${h(FLAG[f] || f)}</div>`).join(''), `<div class="row-actions">${acts}</div>${detail}`];
     });
-    return `${page('Reconciliation', 'Import your bank statement (CSV). Rent Ledger suggests which tenant each credit came from; nothing is recorded until you confirm.')}
+    return `${page('Bank matching', 'Upload a bank statement. Nothing is recorded until you confirm.')}
       ${card('Import statement', `<form data-submit="recon-import"><div class="form-grid cols-3">${field('Statement CSV file', '<input type="file" name="file" accept=".csv,text/csv">')}${field('…or paste the CSV', '<textarea name="csv" rows="3" placeholder="Date,Narration,Ref,Credit"></textarea>', 'span 2')}</div><div class="form-actions"><button class="btn" type="submit">Import</button></div><p class="profile-note">Only money coming in is imported. Lines already imported are skipped automatically.</p></form>`)}
       <div class="tab-row">${[['unmatched', 'To match'], ['matched', 'Matched'], ['ignored', 'Ignored'], ['', 'All']].map(([k, t]) => `<button class="tab-btn ${r.status === k ? 'active' : ''}" data-action="set-state" data-key="recon.status" data-value="${k}">${t}</button>`).join('')}</div>
       ${card('', table(['Date', 'Amount', 'From', 'Reference', 'Status', ''], rows, { emptyText: r.status === 'unmatched' ? 'No credits waiting to be matched.' : 'Nothing here.' }))}`;
@@ -358,7 +380,7 @@
         ${field('Terms / notes', '<textarea name="terms" rows="2" maxlength="5000"></textarea>', '1 / -1')}
       </div><div class="form-actions"><button class="btn" type="submit">Save as draft</button><button class="btn secondary" type="button" data-toggle-form="newLease">Cancel</button></div>
       <p class="profile-note">A lease starts as a draft. Activating it starts the rent schedule. Rent Ledger doesn't give legal advice; keep the signed agreement as a document.</p></form>`, 'card-form') : '';
-    return `${page('Leases', 'Agreements, rent schedules, renewals and expiries.', can('leases.manage') ? '<button class="btn" data-toggle-form="newLease">New lease</button>' : '')}
+    return `${page('Leases', 'Agreements and end dates.', can('leases.manage') ? '<button class="btn" data-toggle-form="newLease">New lease</button>' : '')}
       ${form}
       <div class="tab-row">${[['', 'All'], ['active', 'Active'], ['draft', 'Draft'], ['ended', 'Ended'], ['terminated', 'Terminated']].map(([k, t]) => `<button class="tab-btn ${L.status === k ? 'active' : ''}" data-action="set-state" data-key="leases.status" data-value="${k}">${t}</button>`).join('')}</div>
       ${card('', table(['Tenant', 'Term', 'Rent', 'Deposit', 'Status', ''], rows, { emptyText: 'No leases yet. Tenants without a lease are billed from the Rent tab as before.' }))}`;
@@ -409,7 +431,8 @@
     const st = d.remSettings || { settings: {}, channels: {} };
     const sim = st.mode === 'simulate';
     const channelInfo = Object.entries(st.channels || {}).map(([k, c]) => `<span class="chip ${c.configured ? 'ok' : ''}">${h(label(k === 'inapp' ? 'in-app' : k))}: ${k === 'inapp' ? 'ready' : c.configured ? (sim ? 'set up (preview mode)' : 'live') : 'not set up'}</span>`).join(' ');
-    const banner = `<div class="notice ${sim ? 'warn' : ''}">${sim ? '<b>Preview mode.</b> In-app messages are delivered; email, SMS and WhatsApp messages are marked “simulated” and are <b>not</b> actually sent.' : '<b>Live sending.</b> Approved messages are sent through the configured providers.'}<div class="chips">${channelInfo}</div></div>`;
+    // One line on every tab; which channels are set up is shown on the Settings tab.
+    const banner = `<div class="notice ${sim ? 'warn' : ''}">${sim ? '<b>Preview mode:</b> only in-app messages are really delivered.' : '<b>Live:</b> approved messages are sent.'}</div>`;
     const tabs = `<div class="tab-row">${[['outbox', 'Outbox'], ['preview', 'Preview & draft'], ['templates', 'Templates'], ['settings', 'Settings']].map(([k, t]) => `<button class="tab-btn ${r.tab === k ? 'active' : ''}" data-action="set-state" data-key="reminders.tab" data-value="${k}">${t}</button>`).join('')}</div>`;
     let body = '';
     if (r.tab === 'outbox') {
@@ -438,7 +461,7 @@
     } else {
       const c = st.settings || {};
       const dis = isOwner() ? '' : 'disabled';
-      body = card('Reminder settings', `<form data-submit="reminder-settings"><div class="form-grid cols-3">
+      body = card('Reminder settings', `<div class="chips">${channelInfo}</div>${sim ? '<p class="profile-note">Preview mode: email, SMS and WhatsApp messages are marked “simulated” and are not actually sent.</p>' : ''}<form data-submit="reminder-settings"><div class="form-grid cols-3">
         <label class="check"><input type="checkbox" name="enabled" ${c.enabled ? 'checked' : ''} ${dis}> Prepare reminders automatically every day</label>
         <label class="check"><input type="checkbox" name="requireApproval" ${c.requireApproval !== false ? 'checked' : ''} ${dis}> Wait for my approval before sending (recommended)</label>
         <label class="check"><input type="checkbox" name="onDueDate" ${c.onDueDate ? 'checked' : ''} ${dis}> Remind on the due date</label>
@@ -450,7 +473,7 @@
       </div>${isOwner() ? '<div class="form-actions"><button class="btn" type="submit">Save settings</button></div>' : '<p class="profile-note">Only the owner can change these settings.</p>'}
       <p class="profile-note">Tenants only get email, SMS or WhatsApp if they have agreed to it (set on the tenant’s record or in their portal). In-app messages need a tenant login.</p></form>`);
     }
-    return `${page('Reminders', 'Friendly reminders in English or Hindi. Drafted for your review; sent only after approval.')}${banner}${tabs}${body}`;
+    return `${page('Reminders', 'Nothing is sent until you approve.')}${banner}${tabs}${body}`;
   };
   X.submits['outbox-approve'] = async (data, form) => {
     const ids = [...form.querySelectorAll('input[name=ids]:checked')].map((i) => i.value);
@@ -494,7 +517,7 @@
   X.views.maintenance = () => {
     const m = s.maint;
     if (m.id && d.maintDetail) return maintenanceDetail(d.maintDetail);
-    const form = state.forms.newMaint ? card('New maintenance request', `<form data-submit="maint-create"><div class="form-grid cols-3">
+    const form = state.forms.newMaint ? card('New repair request', `<form data-submit="maint-create"><div class="form-grid cols-3">
       ${field('Property *', `<select name="buildingId" required>${buildingOptions('', 'Choose property')}</select>`)}
       ${field('Room', `<select name="roomId">${roomOptions('')}</select>`)}
       ${field('Category', `<select name="category">${MCAT.map((c) => opt(c, label(c), 'other')).join('')}</select>`)}
@@ -503,9 +526,9 @@
       ${field('Description', '<textarea name="description" rows="2" maxlength="2000"></textarea>', '1 / -1')}
     </div><div class="form-actions"><button class="btn" type="submit">Create request</button><button class="btn secondary" type="button" data-toggle-form="newMaint">Cancel</button></div></form>`, 'card-form') : '';
     const rows = (d.maint || []).map((r) => [`<button class="link-btn" data-action="maint-open" data-id="${r.id}"><b>${h(r.title)}</b></button><br><small class="muted">${h(label(r.category))}${r.createdByRole === 'tenant' ? ' · from tenant' : ''}</small>`, `${h(r.buildingName)} ${h(r.roomLabel)}`, h(r.tenantName || '—'), `<span class="prio ${h(r.priority)}">${h(r.priority)}</span>`, `<span class="stamp m-${h(r.status)}">${h(r.statusLabel)}</span>`, r.cost ? money(r.cost) : '—', h(r.updatedAt.slice(0, 10))]);
-    return `${page('Maintenance', 'Requests from tenants and your own tasks, with a full timeline.', '<button class="btn" data-toggle-form="newMaint">New request</button>')}${form}
+    return `${page('Repairs', 'Requests from tenants and your own tasks.', '<button class="btn" data-toggle-form="newMaint">New request</button>')}${form}
       <div class="card filter-bar"><div class="form-grid cols-3">${field('Status', `<select data-ext-change="state" data-key="maint.status">${[['open', 'Open'], ['', 'All'], ...Object.entries(MSTATUS)].map(([v, t]) => opt(v, t, m.status)).join('')}</select>`)}${field('Property', `<select data-ext-change="state" data-key="maint.buildingId">${buildingOptions(m.buildingId)}</select>`)}</div></div>
-      ${card('', table(['Request', 'Where', 'Tenant', 'Priority', 'Status', 'Cost', 'Updated'], rows, { emptyText: 'No maintenance requests here.' }))}`;
+      ${card('', table(['Request', 'Where', 'Tenant', 'Priority', 'Status', 'Cost', 'Updated'], rows, { emptyText: 'No repair requests here.' }))}`;
   };
   function maintenanceDetail(r) {
     const timeline = r.timeline.map((e) => `<li class="${e.visibleToTenant ? '' : 'internal'}"><span class="when">${h(e.at.slice(0, 16).replace('T', ' '))}</span> <b>${h(e.by || label(e.role))}</b> ${e.type === 'status' ? `→ <span class="stamp m-${h(e.to)}">${h(e.toLabel)}</span>` : ''} ${e.comment ? `<div>${h(e.comment)}</div>` : ''}${e.visibleToTenant ? '' : '<small class="muted">internal note</small>'}</li>`).join('');
@@ -586,7 +609,7 @@
     const q = (extra) => qs({ from: r.from, to: r.to, buildingId: r.buildingId, ...extra });
     const list = Object.entries(REPORTS).map(([key, [title, sub]]) => `<div class="report-card ${r.open === key ? 'active' : ''}"><div><b>${h(title)}</b><small>${h(sub)}</small></div><div class="row-actions"><button class="btn small" data-action="report-open" data-key="${key}">View</button><button class="btn small secondary" data-action="open-page" data-url="/api/reports/${key}${q({ format: 'html' })}">Print / PDF</button><button class="btn small secondary" data-action="download" data-url="/api/reports/${key}${q({ format: 'csv' })}" data-name="${key}.csv">CSV</button></div></div>`).join('');
     const rep = r.open && d.report ? card(`${h(d.report.title)} <small>${h(d.report.range.from)} to ${h(d.report.range.to)}</small>`, table(d.report.columns, d.report.rows.map((row) => row.map((cell, i) => (d.report.moneyColumns.includes(i) ? money(cell) : h(cell))))), 'report-view') : '';
-    return `${page('Reports', 'Every figure comes from the ledger. Print any report or save it as PDF from the printable page.')}
+    return `${page('Reports', 'Print or save any report as PDF.')}
       <form class="card filter-bar" data-submit="report-range"><div class="form-grid cols-3">${field('From month', `<input type="month" name="from" value="${h(r.from)}">`)}${field('To month', `<input type="month" name="to" value="${h(r.to)}">`)}${field('Property', `<select name="buildingId">${buildingOptions(r.buildingId)}</select>`)}<div class="form-actions"><button class="btn" type="submit">Apply</button></div></div><p class="profile-note">Leave the months empty for the last 12 months.</p></form>
       <div class="report-list">${list}</div>${rep}`;
   };
@@ -594,7 +617,7 @@
   X.actions['report-open'] = (el) => { s.reports.open = el.dataset.key; };
 
   // ---------- assistant ----------
-  const SUGGEST = ['Who hasn’t paid this month?', 'Who is overdue?', 'Rent collection for last month', 'Leases expiring in 60 days', 'Outstanding by property', 'Expenses this month', 'Open maintenance requests', 'Cash flow forecast', 'Anything unusual?', 'Draft reminders for overdue tenants'];
+  const SUGGEST = ['Who is overdue?', 'Who hasn’t paid this month?', 'Leases expiring in 60 days', 'Expenses this month', 'Draft reminders for overdue tenants'];
   X.loaders.assistant = async () => {
     [d.aiStatus, d.aiHistory, d.aiActions] = await Promise.all([api('GET', '/api/assistant/status'), api('GET', '/api/assistant/history'), api('GET', '/api/assistant/actions?status=proposed')]);
   };
@@ -621,20 +644,90 @@
     const st = d.aiStatus || { mode: 'basic', ai: {} };
     const modeText = st.mode === 'ai'
       ? `<b>AI mode</b> (${h(st.ai.provider)}). ${h(st.dataSharing || '')}`
-      : `<b>Basic mode.</b> Answers come from built-in rules, not an AI model. ${st.ai.configured ? (isOwner() ? 'An AI provider is configured; you can turn AI on in Settings.' : 'The owner can turn AI on in Settings.') : 'No AI provider is configured on the server.'}`;
+      : `<b>Basic mode:</b> answers come from built-in rules.${st.ai.configured ? ` <span>${isOwner() ? 'You can turn on AI in Settings.' : 'The owner can turn on AI in Settings.'}</span>` : ''}`;
     const msgs = (d.aiHistory || []).map((m) => m.role === 'user'
       ? `<div class="chat-msg user"><div class="bubble">${h(m.text)}</div></div>`
       : `<div class="chat-msg bot"><div class="bubble">${m.notice ? `<div class="notice warn">${h(m.notice)}</div>` : ''}<div class="chat-text">${h(m.text).replace(/\n/g, '<br>')}</div>${(m.results || []).map(resultHtml).join('')}<small class="muted">${m.mode === 'ai' ? 'AI' : 'Basic'} · ${h((m.at || '').slice(11, 16))}</small></div></div>`).join('');
     const pendingIds = new Set((d.aiHistory || []).flatMap((m) => (m.results || []).map((r) => r.action?.id).filter(Boolean)));
     const orphan = (d.aiActions || []).filter((a) => !pendingIds.has(a.id));
-    return `${page('Rent Ledger AI', 'Ask about rent, bills, leases, expenses and maintenance. It can prepare reminders, tasks and expenses for you to approve. It never changes payments or balances.', (d.aiHistory || []).length ? '<button class="btn secondary" data-action="ai-clear">Clear chat</button>' : '')}
+    return `${page('Assistant', 'Ask about your records. It only prepares things for you to approve.', (d.aiHistory || []).length ? '<button class="btn secondary" data-action="ai-clear">Clear chat</button>' : '')}
       <div class="notice">${modeText}</div>
       ${orphan.length ? card(`Proposals waiting for approval <small>${orphan.length}</small>`, orphan.map(actionHtml).join('')) : ''}
       <div class="card chat"><div class="chat-log" id="chat-log">${msgs || '<p class="muted">Ask a question to get started.</p>'}</div>
         <div class="chips suggest">${SUGGEST.map((q) => `<button class="chip" data-action="ai-ask" data-q="${h(q)}">${h(q)}</button>`).join('')}</div>
         <form data-submit="ai-chat" class="chat-form"><input name="message" maxlength="1000" required placeholder="e.g. Which tenants haven't paid this month?" autocomplete="off"><button class="btn" type="submit">Ask</button></form></div>`;
   };
-  X.afterRender = () => { const log = document.getElementById('chat-log'); if (log) log.scrollTop = log.scrollHeight; };
+  X.afterRender = () => {
+    const log = document.getElementById('chat-log'); if (log) log.scrollTop = log.scrollHeight;
+    compactButtons(document.getElementById('app'));
+  };
+
+  // ---------- fewer buttons on screen ----------
+  function buttonsOnly(box) { const kids = [...box.children]; return kids.length && kids.every((el) => el.tagName === 'BUTTON') ? kids : null; }
+  function menuFor(buttons, { text, label: aria, cls }) {
+    const menu = document.createElement('details');
+    menu.className = `more-menu ${cls}`;
+    const summary = document.createElement('summary');
+    summary.className = `btn ${cls === 'page-more' ? '' : 'small'} secondary more-btn`;
+    summary.textContent = text;
+    summary.setAttribute('aria-label', aria);
+    summary.title = aria;
+    const list = document.createElement('div');
+    list.className = 'more-list';
+    buttons.forEach((b) => list.appendChild(b));
+    menu.appendChild(summary);
+    // The list floats above the page (tables scroll sideways and cards blur
+    // their background, so it can't sit inside them). It stays inside #app so
+    // its buttons work like any other.
+    menu.addEventListener('toggle', () => {
+      if (menu.open) { closeMenus(menu); (document.getElementById('app') || document.body).appendChild(list); placeMenu(summary, list); }
+      else list.remove();
+    });
+    return menu;
+  }
+  const isMain = (b) => !b.classList.contains('secondary') && !b.classList.contains('danger');
+  function compactButtons(root) {
+    if (!root) return;
+    // Tables: rows whose buttons are all secondary get one "⋯" menu. Once any
+    // row in a table has a menu, single buttons in that table go in one too,
+    // so the column looks the same on every row. A main (filled) first
+    // button, like "Find match", stays in view.
+    root.querySelectorAll('table').forEach((tbl) => {
+      const rows = [...tbl.querySelectorAll(':scope > tbody > tr > td > .row-actions')].map((box) => ({ box, buttons: buttonsOnly(box) })).filter((r) => r.buttons);
+      const anyMenu = rows.some((r) => !isMain(r.buttons[0]) && r.buttons.length >= 2);
+      rows.forEach(({ box, buttons }) => {
+        if (!isMain(buttons[0]) && (buttons.length >= 2 || anyMenu)) box.appendChild(menuFor(buttons, { text: '⋯', label: 'Actions', cls: 'row-more' }));
+        else if (buttons.length >= 3) box.appendChild(menuFor(buttons.slice(1), { text: '⋯', label: 'More actions', cls: 'row-more' }));
+      });
+    });
+    // Other button rows with three or more keep the first and put the rest in "⋯".
+    root.querySelectorAll('.row-actions').forEach((box) => {
+      if (box.closest('td')) return;
+      const buttons = buttonsOnly(box);
+      if (buttons && buttons.length >= 3) box.appendChild(menuFor(buttons.slice(1), { text: '⋯', label: 'More actions', cls: 'row-more' }));
+    });
+    // Page headers with three or more buttons keep the first and put the rest under "More".
+    root.querySelectorAll('.page-actions').forEach((box) => {
+      const buttons = buttonsOnly(box);
+      if (buttons && buttons.length >= 3) box.appendChild(menuFor(buttons.slice(1), { text: 'More ▾', label: 'More actions', cls: 'page-more' }));
+    });
+  }
+  function placeMenu(summary, list) {
+    const r = summary.getBoundingClientRect();
+    const w = list.offsetWidth; const ht = list.offsetHeight;
+    const left = Math.min(window.innerWidth - w - 8, Math.max(8, r.right - w));
+    let top = r.bottom + 6;
+    if (top + ht > window.innerHeight - 8) top = Math.max(8, r.top - ht - 6);
+    list.style.left = `${left}px`; list.style.top = `${top}px`;
+  }
+  function closeMenus(except) { document.querySelectorAll('details.more-menu[open]').forEach((m) => { if (m !== except) m.open = false; }); }
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.more-list button')) return closeMenus();
+    if (!e.target.closest('.more-list')) closeMenus(e.target.closest('details.more-menu'));
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenus(); });
+  window.addEventListener('scroll', (e) => { if (!e.target.closest?.('.more-list')) closeMenus(); }, { passive: true, capture: true });
+  window.addEventListener('resize', () => closeMenus());
   async function ask(message) {
     const out = await api('POST', '/api/assistant/chat', { message });
     if (out.notice) toast(out.notice, true);
@@ -663,7 +756,7 @@
     const c = d.cash; const a = d.alerts;
     if (!c) return page('Insights', 'Loading…');
     const f = c.forecast;
-    return `${page('Insights', 'Facts from the ledger, plus a clearly labelled estimate for next month.')}
+    return `${page('Insights', 'Trends, plus an estimate for next month.')}
       <div class="two-col"><div>${card('Facts (today)', `<div class="mini-stats"><div><span>Outstanding</span><strong>${money(c.facts.outstanding)}</strong></div><div><span>Overdue</span><strong class="${c.facts.overdue ? 'is-due' : ''}">${money(c.facts.overdue)}</strong></div><div><span>Avg. monthly expenses</span><strong>${money(c.facts.averageMonthlyExpenses)}</strong></div></div>
         ${table(['Month', 'Billed', 'Collected', 'Rate'], c.facts.collectionHistory.map((m) => [h(m.month), money(m.billed), money(m.collected), m.rate === null ? '–' : `${m.rate}%`]))}`)}</div>
       <div>${card(`Forecast for ${h(f.month)} <small>estimate</small>`, `<div class="mini-stats"><div><span>Expected rent</span><strong>${money(f.expectedRent)}</strong></div><div><span>Likely collection</span><strong>${money(f.projectedCollection)}</strong></div><div><span>Net after typical expenses</span><strong class="${f.projectedNet < 0 ? 'is-due' : ''}">${money(f.projectedNet)}</strong></div></div>
@@ -714,10 +807,11 @@
         </div>
         <fieldset class="ai-setting"><legend>Rent Ledger AI</legend>
           <label class="check"><input type="checkbox" name="aiEnabled" ${o.settings.assistant?.aiEnabled ? 'checked' : ''} ${dis || (ai && !ai.ai.configured ? 'disabled' : '')}> Use the AI model for the assistant</label>
-          <p class="profile-note">${ai?.ai.configured ? `Provider: <b>${h(ai.ai.provider)}</b> (${h(ai.ai.model)}). ` : 'No AI provider is configured on the server (AI_PROVIDER, AI_API_KEY and AI_MODEL), so the assistant runs in basic mode. '}When AI is on, your questions and the figures the assistant looks up (tenant names, room labels, dates and amounts) are sent to the provider. Phone numbers, emails, ID numbers and documents are never sent. The assistant can only prepare actions for your approval.</p>
+          <p class="profile-note">${ai?.ai.configured ? `Provider: <b>${h(ai.ai.provider)}</b> (${h(ai.ai.model)}). ` : 'No AI provider is set up on the server, so the assistant uses basic mode. '}When AI is on, your questions and the figures it looks up are sent to the provider. Phone numbers, emails, ID numbers and documents are never sent.</p>
         </fieldset>
         ${isOwner() ? '<div class="form-actions"><button class="btn" type="submit">Save</button></div>' : '<p class="profile-note">Only the owner can change organisation settings.</p>'}</form>`)
-        + card('Your language', `<p class="profile-note">Choose the language for your screens on this device.</p>${window.RL_I18N ? RL_I18N.picker() : ''}`);
+        + `<div class="two-col">${card('Language', `<p class="profile-note">For your screens on this device.</p>${window.RL_I18N ? RL_I18N.picker() : ''}`)}${typeof themePicker === 'function' ? themePicker() : ''}</div>`
+        + (isOwner() && cache.dashboard && !cache.dashboard.onlinePaymentsEnabled ? card('Online payments', '<p class="profile-note">Tenants can’t pay online yet. To show a Pay button on their bills, add your Razorpay keys (RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET) to the server settings in Railway.</p>') : '');
     } else if (tab === 'team') {
       const t = d.team || { members: [], invites: [] };
       body = card('Team', `${table(['Name', 'Contact', 'Role', 'Since', ''], t.members.map((m) => [h(m.name), h(m.contact), `${h(label(m.role))}${m.disabled ? ` ${stamp('void')}` : ''}`, h(m.createdAt.slice(0, 10)), m.role === 'manager' && !m.disabled ? `<button class="btn small danger" data-action="team-disable" data-id="${m.id}">Remove access</button>` : '']))}
@@ -729,7 +823,7 @@
     } else if (tab === 'data') {
       body = card('Backups', `<p class="profile-note">The server keeps automatic database backups (at every start-up and once a day). You can also make one now, or download all your records.</p><div class="form-actions"><button class="btn" data-action="backup-now">Back up now</button><button class="btn secondary" data-action="download-backup">Download all records (JSON)</button></div>${table(['Backup', 'Time'], (d.backups || []).map((b) => [h(b.name), h(b.at.slice(0, 16).replace('T', ' '))]), { emptyText: 'No backups yet.' })}<p class="profile-note">The download contains tenants’ personal details. Keep it private. Uploaded documents are not included.</p>`);
     }
-    return `${page('Settings & team', '')}<div class="tab-row">${tabs.map(([k, t]) => `<button class="tab-btn ${tab === k ? 'active' : ''}" data-action="set-state" data-key="settings.tab" data-value="${k}">${t}</button>`).join('')}</div>${body}`;
+    return `${page('Settings', '')}<div class="tab-row">${tabs.map(([k, t]) => `<button class="tab-btn ${tab === k ? 'active' : ''}" data-action="set-state" data-key="settings.tab" data-value="${k}">${t}</button>`).join('')}</div>${body}`;
   };
   X.submits['org-save'] = async (data) => {
     const body = { name: data.name, timeZone: data.timeZone, defaultLanguage: data.defaultLanguage, settings: { receipts: { footer: data.footer }, retention: { anonymizeFormerTenantsAfterDays: Number(data.retentionDays) || 0 }, assistant: { aiEnabled: data.aiEnabled === 'on' } } };
@@ -835,7 +929,7 @@
   // Extra links on the room's tenant tab.
   X.tenantLinks = (tenant) => `<div class="card quick-links"><h3>More for ${h(tenant.name)}</h3><div class="row-actions">
     <button class="btn small" data-nav="tenancy" data-id="${tenant.id}">Tenancy, deposit & move-out</button>
-    ${can('reports.view') ? `<button class="btn small secondary" data-action="open-page" data-url="/api/ledger/tenants/${tenant.id}/statement?format=html">Statement</button><button class="btn small secondary" data-action="ledger-tenant" data-id="${tenant.id}">Ledger</button>` : ''}
+    ${can('reports.view') ? `<button class="btn small secondary" data-action="open-page" data-url="/api/ledger/tenants/${tenant.id}/statement?format=html">Statement</button><button class="btn small secondary" data-action="ledger-tenant" data-id="${tenant.id}">Bills</button>` : ''}
     ${can('leases.manage') ? '<button class="btn small secondary" data-nav="leases">Leases</button>' : ''}</div></div>`;
 
   // ---------- tenant portal additions ----------
