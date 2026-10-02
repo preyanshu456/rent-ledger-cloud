@@ -1,4 +1,4 @@
-const CACHE_NAME = 'rent-ledger-shell-v3';
+const CACHE_NAME = 'rent-ledger-shell-v4';
 const APP_SHELL = ['/', '/index.html', '/style.css', '/app.js', '/i18n.js', '/modules.js', '/manifest.webmanifest', '/assets/rent-ledger-icon.svg', '/sw-register.js'];
 
 self.addEventListener('install', (event) => {
