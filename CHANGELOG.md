@@ -1,5 +1,11 @@
 # Changelog
 
+## Simpler layout (October 2026)
+- Sidebar: five main buttons (Dashboard, Bills & payments, Reminders, Repairs, Settings), with the rest under **More**. Notifications are a bell next to the name. Profile and Sign out share one row. Theme and language moved to **Settings**.
+- Dashboard: four headline numbers (rooms occupied, collected this month, still to collect, overdue). The rent / electricity / gas split is under **Show details**.
+- Row buttons in tables are grouped into one **⋯** menu, and page headers with many buttons show **More**. Filters sit in one compact row. Page descriptions and notices are shorter.
+- Plainer names: Ledger → Bills & payments, Maintenance → Repairs, Reconciliation → Bank matching. Nothing was removed; every screen and action is still there.
+
 ## Stages 3–16 — full feature release (October 2026)
 
 ### Data and accounting
