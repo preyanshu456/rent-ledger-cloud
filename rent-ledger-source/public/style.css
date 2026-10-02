@@ -1430,3 +1430,11 @@ code.details { font-size: 11px; white-space: pre-wrap; word-break: break-word; }
   .sidebar-add, .sidebar-profile { padding-top: 7px; padding-bottom: 7px; }
   .sidebar-logout { margin-top: 0; padding-top: 5px; padding-bottom: 5px; }
 }
+/* Keep two-column module pages inside the content area, and keep short table values on one line */
+.main { min-width: 0; }
+.two-col { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.two-col > * { min-width: 0; }
+.two-col .form-grid.cols-3 { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.two-col .form-field input, .two-col .form-field select, .two-col .form-field textarea { min-width: 0; width: 100%; }
+.table-wrap td.nw { white-space: nowrap; }
+@media (max-width: 1000px) { .two-col { grid-template-columns: minmax(0, 1fr); } }
