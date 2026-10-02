@@ -1110,10 +1110,9 @@ function renderTenantTab(r, tenant) {
         </div>
       </div>
       ${form}
+      ${previousTenantsCard(r)}
     `;
   }
-
-  const history = cache.tenants.filter((t) => t.roomId === r.id && !t.active);
 
   return `
     <div class="card">
@@ -1132,7 +1131,16 @@ function renderTenantTab(r, tenant) {
     </div>
     ${tenantLoginCard(tenant)}
     ${window.RL_EXT ? RL_EXT.tenantLinks(tenant) : ""}
-    ${history.length ? `
+    ${previousTenantsCard(r)}
+  `;
+}
+
+// Former tenants of a room: shown whether or not the room is occupied, so
+// the deposit settlement stays reachable after a move-out.
+function previousTenantsCard(r) {
+  const history = cache.tenants.filter((t) => t.roomId === r.id && !t.active);
+  if (!history.length) return "";
+  return `
       <div class="card">
         <h3>Previous tenants</h3>
         <table class="ledger">
@@ -1141,9 +1149,7 @@ function renderTenantTab(r, tenant) {
             ${history.map((t) => `<tr><td class="text">${esc(t.name)}</td><td>${esc(t.mobile || '—')}</td><td>${esc(t.moveInDate)}</td><td>${esc(t.moveOutDate)}</td><td><div class="row-actions"><button class="btn small secondary" data-nav="tenancy" data-id="${t.id}">Deposit & settlement</button><button class="btn small danger" data-action="delete-tenant" data-id="${t.id}">Remove record</button></div></td></tr>`).join("")}
           </tbody>
         </table>
-      </div>
-    ` : ""}
-  `;
+      </div>`;
 }
 
 function renderRentTab(r, tenant) {
