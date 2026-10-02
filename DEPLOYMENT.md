@@ -30,16 +30,16 @@ Look for a log line `legacy data imported` with the number of bills and tenants.
 
 1. `https://rent-ledger.up.railway.app/health` returns `{"status":"ok",…}`.
 2. Sign in as the owner. The dashboard totals should match what you saw before the deploy.
-3. Open **Finance** and **Ledger**: outstanding amounts per tenant should look right.
+3. Open **Bills & payments**, and **Finance** (under **More** in the sidebar): outstanding amounts per tenant should look right.
 4. Open a room: rent, electricity and gas history is all there.
 5. Sign in as a tenant (or ask one): their bills and balance are correct.
 6. The deploy logs show no `configuration` warnings you didn't expect. Warnings name the setting, never its value.
-7. Optional: **Settings & team → Backups → Back up now**.
+7. Optional: **Settings → Backups → Back up now**.
 
 ## Backups and restore
 
 - **Automatic:** a full copy of the database is saved to `/data/backups` at every start-up, before migrations, and once a day (newest 30 kept, `BACKUP_KEEP`).
-- **Manual:** **Settings & team → Backups → Back up now**, or download all records as JSON. The JSON file holds tenants' personal details, so keep it private.
+- **Manual:** **Settings → Backups → Back up now**, or download all records as JSON. The JSON file holds tenants' personal details, so keep it private.
 - **Restore a database backup:** stop the service, then copy the chosen `backups/rent-ledger-….sqlite` over `/data/rent-ledger.sqlite`. Delete `rent-ledger.sqlite-wal` and `rent-ledger.sqlite-shm` if they exist, then start the service again.
 
 ## Rolling back
@@ -49,7 +49,7 @@ Look for a log line `legacy data imported` with the number of bills and tenants.
 **Going back to the version from before SQLite** (only if this release can't be used at all):
 
 1. Redeploy the last pre-upgrade deployment. That code reads `db.json`, which still holds the data **as it was at the moment of the upgrade**.
-2. Anything recorded after the upgrade (payments, bills, tenants) is **not** in `db.json`. Before rolling back, download **Settings & team → Backups → Download all records**, so those entries can be re-entered by hand. There is no automatic SQLite → `db.json` converter.
+2. Anything recorded after the upgrade (payments, bills, tenants) is **not** in `db.json`. Before rolling back, download **Settings → Backups → Download all records**, so those entries can be re-entered by hand. There is no automatic SQLite → `db.json` converter.
 3. To upgrade again later from a `db.json` that changed in the meantime, first rename `/data/rent-ledger.sqlite` (keep it as a backup). This lets the importer run again from the updated `db.json`. Otherwise the existing database is used and the newer `db.json` changes are ignored.
 
 Prefer rolling **forward** with a fix if you can. It keeps every record.
@@ -63,7 +63,7 @@ Prefer rolling **forward** with a fix if you can. It keeps every record.
 | SMS | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Same as above. Indian SMS may need DLT templates |
 | WhatsApp | Twilio settings + `TWILIO_WHATSAPP_FROM` | Needs an approved WhatsApp sender/template with Twilio |
 | Real sending | `NOTIFY_MODE=live` (the default in production) | Use `simulate` while testing |
-| Rent Ledger AI | `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL` | Owner: Settings & team → Organisation → "Use the AI model" |
+| Rent Ledger AI | `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL` | Owner: Settings → Organisation → "Use the AI model" |
 | Enforced CSP | `CSP_ENFORCE=true` | After checking the browser console shows no CSP reports, including during a Razorpay payment |
 
 ## Scaling note
