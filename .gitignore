@@ -3,3 +3,12 @@
 .env.*
 !.env.example
 node_modules/
+
+# Local development data (db.json, receipts, backups) — real tenant data, never commit.
+rent-ledger-source/data/
+.DS_Store
+
+# Database files, wherever they end up locally
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

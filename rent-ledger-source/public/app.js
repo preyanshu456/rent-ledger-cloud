@@ -46,10 +46,6 @@ function themePicker() {
   const active = currentThemeId();
   return `<article class="card profile-card appearance-card"><h3>Appearance <small>this device</small></h3><p class="profile-note">Choose a colour theme. It changes the whole app on this device and is remembered next time.</p><div class="theme-grid" role="group" aria-label="Colour theme">${THEMES.map((t) => `<button type="button" class="theme-option" data-theme-pick="${t.id}" aria-pressed="${t.id === active}"><span class="theme-swatch" style="${themeSwatchStyle(t)}"></span><span class="theme-name">${t.name}</span></button>`).join('')}</div></article>`;
 }
-function sidebarThemeDots() {
-  const active = currentThemeId();
-  return `<div class="sidebar-themes" role="group" aria-label="Colour theme"><span>Theme</span>${THEMES.map((t) => `<button type="button" class="theme-dot" data-theme-pick="${t.id}" aria-pressed="${t.id === active}" title="${t.name}" aria-label="${t.name} theme" style="background:linear-gradient(135deg, ${t.primary} 55%, ${t.warm} 56%)"></button>`).join('')}</div>`;
-}
 function pickTheme(id) {
   if (id === currentThemeId()) return;
   try { localStorage.setItem('rentLedgerTheme', id); } catch {}
@@ -90,6 +86,10 @@ document.addEventListener('click', (event) => {
   const pick = event.target.closest('[data-theme-pick]');
   if (pick) pickTheme(pick.dataset.themePick);
 });
+// Remember whether the dashboard's "Show details" is open across re-renders.
+document.addEventListener('toggle', (event) => {
+  if (event.target.matches?.('.dash-details')) state.dashDetails = event.target.open;
+}, true);
 
 const session = JSON.parse(localStorage.getItem('rentLedgerSession') || 'null');
 const authState = { resetContact: '' };
@@ -159,6 +159,13 @@ async function api(method, url, body) {
   const contentType = res.headers.get('content-type') || '';
   if (!contentType.includes('application/json')) {
     throw new Error('The Mac server address is incorrect. Run “npm start” on your Mac and enter the exact http://…:4000 Wi-Fi link shown in Terminal.');
+  }
+  if (res.status === 401 && session?.token && !url.startsWith('/api/auth/')) {
+    // The session expired or was ended (e.g. password changed on another device).
+    try { sessionStorage.setItem('rentLedgerNotice', 'Your session has ended. Please sign in again.'); } catch {}
+    localStorage.removeItem('rentLedgerSession');
+    location.reload();
+    return new Promise(() => {});
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: "Request failed" }));
@@ -231,7 +238,7 @@ const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").match
 function currentPageKey() {
   if (!session) return "auth";
   if (session.user.role === "tenant") return `tenant:${state.tenantView}`;
-  return `owner:${state.view}:${state.buildingId || ""}:${state.roomId || ""}`;
+  return `owner:${state.view}:${state.buildingId || ""}:${state.roomId || ""}:${state.params?.id || ""}`;
 }
 
 // Thin bar along the top while the app waits on the server. It only appears if
@@ -330,7 +337,7 @@ function paintSkeleton(kind) {
   if (kind === "tenant") {
     app.innerHTML = `<div class="tenant-shell" aria-busy="true"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div></header><main class="tenant-main"><span class="sr-only">Loading your home…</span><div class="sk-stack">${sk("90px", "12px")}${sk("min(420px, 80%)", "40px")}${sk("180px", "14px")}</div><div class="sk-block">${sk("100%", "124px", 20)}</div><div class="sk-grid">${sk("100%", "220px", 16).repeat(3)}</div></main></div>`;
   } else {
-    app.innerHTML = `<div class="sidebar"><div class="brand">Rent Ledger <span class="brand-mark">v1</span></div><div class="sk-stack sk-dark">${sk("85%", "34px", 9).repeat(4)}</div></div><div class="main" aria-busy="true"><span class="sr-only">Loading your dashboard…</span><div class="sk-stack">${sk("220px", "36px")}${sk("280px", "12px")}</div><div class="sk-grid sk-stats">${sk("100%", "96px", 16).repeat(8)}</div><div class="sk-block">${sk("100%", "240px", 16)}</div></div>`;
+    app.innerHTML = `<div class="sidebar"><div class="brand">Rent Ledger</div><div class="sk-stack sk-dark">${sk("85%", "34px", 9).repeat(4)}</div></div><div class="main" aria-busy="true"><span class="sr-only">Loading your dashboard…</span><div class="sk-stack">${sk("220px", "36px")}${sk("280px", "12px")}</div><div class="sk-grid sk-stats">${sk("100%", "96px", 16).repeat(4)}</div><div class="sk-block">${sk("100%", "240px", 16)}</div></div>`;
   }
 }
 
@@ -456,7 +463,9 @@ function fmtMoney(n) {
   const v = Number(n) || 0;
   return "₹" + v.toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
-function today() { return new Date().toISOString().slice(0, 10); }
+// The local calendar date (YYYY-MM-DD). toISOString() alone gives the UTC date,
+// which is yesterday's date in India before 05:30.
+function today() { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10); }
 function esc(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
@@ -490,6 +499,7 @@ async function render() {
   if (!session) {
     document.getElementById('app').innerHTML = renderAuth();
     attachAuthHandlers();
+    try { const notice = sessionStorage.getItem('rentLedgerNotice'); if (notice) { sessionStorage.removeItem('rentLedgerNotice'); toast(notice); } } catch {}
     settle();
     return;
   }
@@ -502,11 +512,13 @@ async function render() {
         cache.tenantLoadedAt = Date.now();
       }
       if (state.tenantView === 'profile' && !cache.tenantProfile) cache.tenantProfile = await api('GET', '/api/account/profile');
+      if (window.RL_EXT) await RL_EXT.beforeTenantRender();
     }
     catch (e) { progressDone(); toast(e.message, true); logout(); return; }
     progressDone();
     if (seq !== ui.renderSeq) return;
-    paint(state.tenantView === 'profile' ? renderTenantProfile() : renderTenantPortal(), { pageChanged, tabChanged: false, after: attachTenantHandlers });
+    const tenantExt = window.RL_EXT?.tenantViews[state.tenantView];
+    paint(tenantExt ? tenantExt() : state.tenantView === 'profile' ? renderTenantProfile() : renderTenantPortal(), { pageChanged, tabChanged: false, after: () => { attachTenantHandlers(); window.RL_EXT?.afterRender?.(); } });
     settle();
     return;
   }
@@ -514,8 +526,10 @@ async function render() {
   progressStart();
   try {
     await loadCore();
+    if (window.RL_EXT) await RL_EXT.beforeOwnerRender();
     if (state.view === 'profile' && !cache.profile) cache.profile = await api('GET', '/api/account/profile');
-    if (state.view === "dashboard") [cache.dashboard, cache.payments] = await Promise.all([api("GET", "/api/dashboard"), api("GET", "/api/payments?limit=8")]);
+    if (state.view === "dashboard") [cache.dashboard, cache.payments] = await Promise.all([api("GET", "/api/dashboard"), api("GET", "/api/payments?limit=8"), window.RL_EXT?.loadDashboardExtras()]);
+    if (window.RL_EXT?.views[state.view]) await RL_EXT.load(state.view);
     if (state.view === "building" && state.buildingId) cache.buildingRent = await api("GET", `/api/rent?buildingId=${state.buildingId}`);
     if (state.view === "room" && state.roomId) {
       const [rent, electricity, gas] = await Promise.all([
@@ -532,7 +546,7 @@ async function render() {
   }
   progressDone();
   if (seq !== ui.renderSeq) return;
-  paint(renderSidebar() + `<div class="main">${renderMain()}</div>`, { pageChanged, tabChanged, after: attachHandlers });
+  paint(renderSidebar() + `<div class="main">${renderMain()}</div>`, { pageChanged, tabChanged, after: () => { attachHandlers(); window.RL_EXT?.afterRender?.(); } });
   settle();
 }
 
@@ -549,11 +563,11 @@ function renderAuth() {
 function authForm(mode, role) {
   const form = document.getElementById('auth-form');
   if (mode === 'signup') {
-    form.innerHTML = `<p class="kicker">CREATE ACCOUNT</p><h2>Join as a ${role}</h2><p class="auth-muted">${role === 'tenant' ? 'Use the mobile number your owner saved for you.' : 'Create your private owner workspace.'}</p><form data-auth="signup"><input type="hidden" name="role" value="${role}"><label>Full name<input name="name" required placeholder="Your name"></label><label>${role === 'tenant' ? 'Registered mobile number' : 'Mobile number or email'}<input name="contact" required></label><label>Create password<input name="password" type="password" minlength="4" required placeholder="At least 4 characters"></label><button class="btn auth-submit">Create account <span>→</span></button></form><p class="auth-alt">Already have access? <button data-auth-toggle="login">Sign in</button></p>`;
+    form.innerHTML = `<p class="kicker">CREATE ACCOUNT</p><h2>Join as a ${role}</h2><p class="auth-muted">${role === 'tenant' ? 'Use the mobile number your owner saved for you and the invite code they shared.' : 'Create your private owner workspace.'}</p><form data-auth="signup"><input type="hidden" name="role" value="${role}"><label>Full name<input name="name" required placeholder="Your name" autocomplete="name"></label><label>${role === 'tenant' ? 'Registered mobile number' : 'Mobile number or email'}<input name="contact" required autocomplete="username"></label>${role === 'tenant' ? '<label>Invite code<input name="inviteCode" required autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" placeholder="ABCD-2345"></label>' : '<label>Setup code <small>(only if your server asks for one)</small><input name="setupCode" autocomplete="off"></label>'}<label>Create password<input name="password" type="password" minlength="8" required placeholder="At least 8 characters" autocomplete="new-password"></label><button class="btn auth-submit">Create account <span>→</span></button></form><p class="auth-alt">Already have access? <button data-auth-toggle="login">Sign in</button></p>`;
   } else if (mode === 'request-password-reset') {
     form.innerHTML = `<p class="kicker">PASSWORD RESET</p><h2>Get a one-time code</h2><p class="auth-muted">Enter the mobile number or email used for your account. We will send a 6-digit verification code.</p><form data-auth="request-password-reset"><input type="hidden" name="role" value="${role}"><label>Mobile number or email<input name="contact" required placeholder="you@example.com"></label><button class="btn auth-submit">Send code <span>→</span></button></form><p class="auth-alt"><button data-auth-toggle="login">Back to sign in</button></p>`;
   } else if (mode === 'reset-password') {
-    form.innerHTML = `<p class="kicker">VERIFY CODE</p><h2>Create a new password</h2><p class="auth-muted">Enter the 6-digit code sent to you. It expires after 10 minutes.</p><form data-auth="reset-password"><input type="hidden" name="role" value="${role}"><input type="hidden" name="contact" value="${esc(authState.resetContact)}"><label>Verification code<input name="otp" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required placeholder="123456"></label><label>New password<input name="password" type="password" minlength="4" required placeholder="At least 4 characters"></label><button class="btn auth-submit">Reset password <span>→</span></button></form><p class="auth-alt"><button data-auth-toggle="request-password-reset">Send a new code</button></p>`;
+    form.innerHTML = `<p class="kicker">VERIFY CODE</p><h2>Create a new password</h2><p class="auth-muted">Enter the 6-digit code sent to you. It expires after 10 minutes.</p><form data-auth="reset-password"><input type="hidden" name="role" value="${role}"><input type="hidden" name="contact" value="${esc(authState.resetContact)}"><label>Verification code<input name="otp" inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" required placeholder="123456"></label><label>New password<input name="password" type="password" minlength="8" required placeholder="At least 8 characters" autocomplete="new-password"></label><button class="btn auth-submit">Reset password <span>→</span></button></form><p class="auth-alt"><button data-auth-toggle="request-password-reset">Send a new code</button></p>`;
   } else {
     form.innerHTML = loginMarkup(role);
   }
@@ -567,7 +581,7 @@ function authForm(mode, role) {
 function renderTenantPortal() {
   const d = cache.tenantPortal;
   const gasEntries = d.gas || [];
-  const owed = (entry, type) => entry.status === 'paid' ? 0 : type === 'rent' ? Math.max((entry.rentAmount || 0) - (entry.amountPaid || 0), 0) : (entry.amount || 0);
+  const owed = (entry, type) => entry.outstanding !== undefined ? entry.outstanding : entry.status === 'paid' ? 0 : type === 'rent' ? Math.max((entry.rentAmount || 0) - (entry.amountPaid || 0), 0) : (entry.amount || 0);
   const rentDue = d.rent.reduce((s, x) => s + owed(x, 'rent'), 0);
   const elecDue = d.electricity.reduce((s, x) => s + owed(x, 'electricity'), 0);
   const gasDue = gasEntries.reduce((s, x) => s + owed(x, 'gas'), 0);
@@ -591,7 +605,7 @@ function renderTenantPortal() {
       : `<section class="card pay-all-card muted"><div><span class="kicker">TOTAL PENDING</span><strong>${fmtMoney(totalDue)}</strong><small>Online payment isn't enabled by your owner yet. Pay them directly and add a payment proof below.</small></div></section>`)
     : '';
   const table = (title, entries, type) => `<article class="card"><h3><span>${title}</span><small>Last 6 entries</small></h3><table class="ledger tenant-ledger"><thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Payment</th></tr></thead><tbody>${billRows(entries, type)}</tbody></table></article>`;
-  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><span>Welcome, <b>${esc(d.tenant.name)}</b></span><button class="tenant-profile-link" data-tenant-nav="profile">My profile</button><button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main"><p class="kicker">YOUR HOME</p><h1>${esc(d.building.name)}</h1><p class="tenant-address">${esc(d.room.label)} · Floor ${d.room.floorNumber}</p><section class="tenant-hero"><div><span>Monthly rent</span><strong>${fmtMoney(d.room.monthlyRent)}</strong><small>Your fixed monthly rental</small></div><div><span>Rent outstanding</span><strong class="${rentDue ? 'is-due' : ''}">${fmtMoney(rentDue)}</strong><small>${rentDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Electricity outstanding</span><strong class="${elecDue ? 'is-due' : ''}">${fmtMoney(elecDue)}</strong><small>${elecDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Gas outstanding</span><strong class="${gasDue ? 'is-due' : ''}">${fmtMoney(gasDue)}</strong><small>${gasDue ? 'Payment pending' : 'All caught up'}</small></div></section>${payAll}<section class="tenant-bills">${table('Rent history', d.rent, 'rent')}${table('Electricity bills', d.electricity, 'electricity')}${table('Gas bills', gasEntries, 'gas')}</section><input type="file" data-receipt-file accept="image/jpeg,image/png,image/webp,application/pdf" hidden></main></div>`;
+  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><span>Welcome, <b>${esc(d.tenant.name)}</b></span>${window.RL_I18N ? RL_I18N.picker() : ''}<button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main">${window.RL_EXT ? RL_EXT.tenantNav() : ''}<p class="kicker">YOUR HOME</p><h1>${esc(d.building.name)}</h1><p class="tenant-address">${esc(d.room.label)} · Floor ${d.room.floorNumber}</p><section class="tenant-hero"><div><span>Monthly rent</span><strong>${fmtMoney(d.room.monthlyRent)}</strong><small>Your fixed monthly rental</small></div><div><span>Rent outstanding</span><strong class="${rentDue ? 'is-due' : ''}">${fmtMoney(rentDue)}</strong><small>${rentDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Electricity outstanding</span><strong class="${elecDue ? 'is-due' : ''}">${fmtMoney(elecDue)}</strong><small>${elecDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Gas outstanding</span><strong class="${gasDue ? 'is-due' : ''}">${fmtMoney(gasDue)}</strong><small>${gasDue ? 'Payment pending' : 'All caught up'}</small></div></section>${payAll}${window.RL_EXT ? RL_EXT.tenantHomeExtras(d) : ''}<section class="tenant-bills">${table('Rent history', d.rent, 'rent')}${table('Electricity bills', d.electricity, 'electricity')}${table('Gas bills', gasEntries, 'gas')}</section><input type="file" data-receipt-file accept="image/jpeg,image/png,image/webp,application/pdf" hidden></main></div>`;
 }
 
 // ---------- online payments (Razorpay Checkout) ----------
@@ -652,15 +666,22 @@ async function startTenantPayment(body, button) {
 function displayDate(value) { return value ? new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not provided'; }
 function profileCard(title, rows) { return `<article class="card profile-card"><h3>${title}</h3><dl class="profile-list">${rows.map(([label, value]) => `<div><dt>${esc(label)}</dt><dd>${value}</dd></div>`).join('')}</dl></article>`; }
 function passwordCard() {
-  const form = state.forms.changePassword ? `<form class="profile-password-form" data-submit="change-password"><label>Current password<input name="currentPassword" type="password" required autocomplete="current-password"></label><label>New password<input name="newPassword" type="password" minlength="4" required autocomplete="new-password"></label><label>Confirm new password<input name="confirmPassword" type="password" minlength="4" required autocomplete="new-password"></label><div class="form-actions"><button class="btn" type="submit">Update password</button><button class="btn secondary" type="button" data-toggle-form="changePassword">Cancel</button></div></form>` : `<p class="profile-note">For your security, passwords are never displayed. You can update yours at any time.</p><button class="btn secondary" data-toggle-form="changePassword">Change password</button>`;
+  const form = state.forms.changePassword ? `<form class="profile-password-form" data-submit="change-password"><label>Current password<input name="currentPassword" type="password" required autocomplete="current-password"></label><label>New password<input name="newPassword" type="password" minlength="8" required autocomplete="new-password" placeholder="At least 8 characters"></label><label>Confirm new password<input name="confirmPassword" type="password" minlength="8" required autocomplete="new-password"></label><div class="form-actions"><button class="btn" type="submit">Update password</button><button class="btn secondary" type="button" data-toggle-form="changePassword">Cancel</button></div></form>` : `<p class="profile-note">For your security, passwords are never displayed. You can update yours at any time.</p><button class="btn secondary" data-toggle-form="changePassword">Change password</button>`;
   return `<article class="card profile-card"><h3>Password & security</h3>${form}</article>`;
 }
 function renderTenantProfile() {
   const p = cache.tenantProfile;
-  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><button class="tenant-profile-link" data-tenant-nav="home">← My home</button><button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main"><p class="kicker">ACCOUNT</p><h1>My profile</h1><p class="tenant-address">Your account, tenancy and security settings.</p><section class="profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Tenant'], ['Member since', esc(displayDate(p.account.createdAt))]])}${profileCard('Your tenancy', [['Building', esc(p.home.buildingName)], ['Address', esc(p.home.buildingAddress || 'Not provided')], ['Room', esc(`${p.home.roomLabel} · Floor ${p.home.floorNumber}`)], ['Monthly rent', fmtMoney(p.home.monthlyRent)], ['Security deposit', fmtMoney(p.tenant.deposit)], ['Move-in date', esc(displayDate(p.tenant.moveInDate))]])}${profileCard('Contact & identity', [['Mobile number', esc(p.tenant.mobile || 'Not provided')], ['Alternative mobile', esc(p.tenant.altMobile || 'Not provided')], ['Email', esc(p.tenant.email || 'Not provided')], ['ID proof type', esc(p.tenant.idProofType || 'Not provided')]])}${passwordCard()}${themePicker()}</section></main></div>`;
+  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user">${window.RL_I18N ? RL_I18N.picker() : ''}<button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main">${window.RL_EXT ? RL_EXT.tenantNav() : ''}<p class="kicker">ACCOUNT</p><h1>My profile</h1><p class="tenant-address">Your account, tenancy and security settings.</p><section class="profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Tenant'], ['Member since', esc(displayDate(p.account.createdAt))]])}${profileCard('Your tenancy', [['Building', esc(p.home.buildingName)], ['Address', esc(p.home.buildingAddress || 'Not provided')], ['Room', esc(`${p.home.roomLabel} · Floor ${p.home.floorNumber}`)], ['Monthly rent', fmtMoney(p.home.monthlyRent)], ['Security deposit', fmtMoney(p.tenant.deposit)], ['Move-in date', esc(displayDate(p.tenant.moveInDate))]])}${profileCard('Contact & identity', [['Mobile number', esc(p.tenant.mobile || 'Not provided')], ['Alternative mobile', esc(p.tenant.altMobile || 'Not provided')], ['Email', esc(p.tenant.email || 'Not provided')], ['ID proof type', esc(p.tenant.idProofType || 'Not provided')]])}${window.RL_EXT ? RL_EXT.tenantProfileExtras(p) : ''}${passwordCard()}${themePicker()}</section></main></div>`;
 }
 
-function logout() { localStorage.removeItem('rentLedgerSession'); location.reload(); }
+async function logout() {
+  const token = session?.token;
+  localStorage.removeItem('rentLedgerSession');
+  if (token) {
+    try { await fetch(apiUrl('/api/auth/logout'), { method: 'POST', headers: { Authorization: `Bearer ${token}` } }); } catch {}
+  }
+  location.reload();
+}
 function attachAuthHandlers() {
   document.querySelectorAll('[data-install-app]').forEach(btn => btn.onclick = requestAppInstall);
   document.querySelectorAll('[data-role]').forEach(btn => btn.onclick = () => {
@@ -732,6 +753,7 @@ function attachTenantHandlers() {
     } catch (error) { toast(error.message, true); }
     finally { event.target.value = ''; }
   };
+  window.RL_EXT?.attachTenant();
 }
 
 // ---------- sidebar ----------
@@ -774,32 +796,56 @@ function renderSidebar() {
 
   return `
     <div class="sidebar">
-      <div class="brand" data-nav="dashboard" style="cursor:pointer">
-        Rent Ledger <span class="brand-mark">v1</span>
+      <div class="side-top">
+        <div class="brand" data-nav="dashboard" style="cursor:pointer">Rent Ledger</div>
+        ${window.RL_EXT?.sidebarBell ? RL_EXT.sidebarBell() : ""}
       </div>
       <div class="sidebar-scroll">
+        ${window.RL_EXT ? RL_EXT.sidebarNav() : ""}
+        <div class="side-group-label">Properties</div>
         ${buildingsHtml || `<div style="opacity:.6; font-size:13px; padding:8px;">No buildings yet.</div>`}
+        <button class="side-add" data-action="add-building">+ Add building</button>
       </div>
-      <button class="sidebar-add" data-toggle-form="addBuilding">+ Add building</button>
-      <button class="sidebar-profile ${state.view === 'profile' ? 'active' : ''}" data-nav="profile">◉ View your profile</button>
-      <button class="sidebar-logout" data-action="logout">↪ Sign out</button>
-      ${sidebarThemeDots()}
+      <div class="side-foot">
+        <button class="side-foot-btn ${state.view === 'profile' ? 'active' : ''}" data-nav="profile">Profile</button>
+        <button class="side-foot-btn" data-action="logout">Sign out</button>
+      </div>
     </div>
   `;
 }
 
 // ---------- main dispatch ----------
 function renderMain() {
+  if (window.RL_EXT?.views[state.view]) return RL_EXT.views[state.view]();
   if (state.view === "profile") return renderOwnerProfile();
   if (state.view === "building" && state.buildingId) return renderBuildingView();
   if (state.view === "room" && state.roomId) return renderRoomView();
   return renderDashboard();
 }
 
+function backupCard() {
+  return `<article class="card profile-card"><h3>Data backup</h3><p class="profile-note">Download a copy of all your records (buildings, tenants and every bill). Receipt images are not included. Keep the file somewhere private, because it contains tenants' personal details. The server also keeps automatic daily backups.</p><button class="btn secondary" data-action="download-backup">Download backup</button></article>`;
+}
+
+async function downloadBackup() {
+  const res = await fetch(apiUrl('/api/admin/export'), { headers: { Authorization: `Bearer ${session?.token || ''}` } });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({ error: 'Download failed' }));
+    throw new Error(data.error || 'Download failed');
+  }
+  const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '')?.[1] || 'rent-ledger-backup.json';
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = url; link.download = name;
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  toast('Backup downloaded');
+}
+
 function renderOwnerProfile() {
   const p = cache.profile || { account: session.user, buildings: [] };
   const buildings = p.buildings.length ? p.buildings.map((building) => `<div class="profile-building"><div><strong>${esc(building.name)}</strong><span>${esc(building.address || 'No address on file')}</span></div><div><b>${building.occupiedRooms}/${building.rooms}</b><small>occupied · ${building.totalFloors || '—'} floors</small></div></div>`).join('') : '<p class="profile-note">No buildings added yet.</p>';
-  return `<div class="page-title">Your profile</div><div class="page-sub">Your account, buildings and security settings.</div><section class="profile-grid owner-profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Owner'], ['Member since', esc(displayDate(p.account.createdAt))]])}${passwordCard()}${themePicker()}<article class="card profile-card profile-buildings"><h3>Your buildings <small>${p.buildings.length}</small></h3>${buildings}</article></section>`;
+  return `<div class="page-title">Your profile</div><div class="page-sub">Your account, buildings and security settings.</div><section class="profile-grid owner-profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Owner'], ['Member since', esc(displayDate(p.account.createdAt))]])}${passwordCard()}${backupCard()}${themePicker()}<article class="card profile-card profile-buildings"><h3>Your buildings <small>${p.buildings.length}</small></h3>${buildings}</article></section>`;
 }
 
 // ---------- dashboard ----------
@@ -822,27 +868,38 @@ function renderDashboard() {
     </div>
   ` : "";
 
+  // Four headline numbers; the rent / electricity / gas split is one click away.
+  const addRupees = (...values) => Math.round(values.reduce((sum, v) => sum + (Number(v) || 0), 0) * 100) / 100;
+  const collected = addRupees(d.rentCollected, d.elecCollected, d.gasCollected);
+  const pending = addRupees(d.rentPending, d.elecPending, d.gasPending);
+  const splitRow = (name, got, owed, open) => `<tr><td class="text">${name}</td><td>${fmtMoney(got)}</td><td>${fmtMoney(owed)}</td><td>${open ?? "–"}</td></tr>`;
+  const details = `
+    <details class="card dash-details" ${state.dashDetails ? "open" : ""}>
+      <summary>Show details</summary>
+      <div class="table-scroll"><table class="ledger dash-split"><thead><tr><th>This month</th><th>Collected</th><th>Still to collect</th><th>Open bills (all months)</th></tr></thead><tbody>
+        ${splitRow("Rent", d.rentCollected, d.rentPending, d.outstandingRentEntries)}
+        ${splitRow("Electricity", d.elecCollected, d.elecPending, d.outstandingElectricityEntries)}
+        ${splitRow("Gas", d.gasCollected, d.gasPending, d.outstandingGasEntries)}
+      </tbody></table></div>
+      <p class="dash-more"><span class="dm-item">Buildings <b>${d.totalBuildings ?? "–"}</b></span><span class="dm-item">Vacant rooms <b>${d.vacantRooms ?? "–"}</b></span>${window.RL_EXT ? RL_EXT.dashboardExtras() : ""}</p>
+    </details>`;
+
   return `
     <div class="page-title">Dashboard</div>
-    <div class="page-sub">${MONTHS[d.month] || ""} ${d.year || ""} · overview across all buildings</div>
+    <div class="page-sub">${MONTHS[d.month] || ""} ${d.year || ""}</div>
 
-    <div class="stat-grid">
-      <div class="stat-card"><div class="stat-label">Buildings</div><div class="stat-value">${d.totalBuildings ?? "–"}</div></div>
-      <div class="stat-card good"><div class="stat-label">Occupied rooms</div><div class="stat-value">${d.occupiedRooms ?? "–"} / ${d.totalRooms ?? "–"}</div></div>
-      <div class="stat-card good"><div class="stat-label">Rent collected (this mo.)</div><div class="stat-value">${fmtMoney(d.rentCollected)}</div></div>
-      <div class="stat-card warn"><div class="stat-label">Rent pending (this mo.)</div><div class="stat-value">${fmtMoney(d.rentPending)}</div></div>
-      <div class="stat-card good"><div class="stat-label">Electricity collected</div><div class="stat-value">${fmtMoney(d.elecCollected)}</div></div>
-      <div class="stat-card warn"><div class="stat-label">Electricity pending</div><div class="stat-value">${fmtMoney(d.elecPending)}</div></div>
-      <div class="stat-card good"><div class="stat-label">Gas collected</div><div class="stat-value">${fmtMoney(d.gasCollected)}</div></div>
-      <div class="stat-card warn"><div class="stat-label">Gas pending</div><div class="stat-value">${fmtMoney(d.gasPending)}</div></div>
-      <div class="stat-card warn"><div class="stat-label">Open rent entries</div><div class="stat-value">${d.outstandingRentEntries ?? "–"}</div></div>
-      <div class="stat-card warn"><div class="stat-label">Open electricity entries</div><div class="stat-value">${d.outstandingElectricityEntries ?? "–"}</div></div>
-      <div class="stat-card warn"><div class="stat-label">Open gas entries</div><div class="stat-value">${d.outstandingGasEntries ?? "–"}</div></div>
+    <div class="stat-grid stat-grid-4">
+      <div class="stat-card good"><div class="stat-label">Rooms occupied</div><div class="stat-value">${d.occupiedRooms ?? "–"} / ${d.totalRooms ?? "–"}</div></div>
+      <div class="stat-card good"><div class="stat-label">Collected this month</div><div class="stat-value">${fmtMoney(collected)}</div></div>
+      <div class="stat-card warn"><div class="stat-label">Still to collect</div><div class="stat-value">${fmtMoney(pending)}</div></div>
+      <div class="stat-card warn"><div class="stat-label">Overdue</div><div class="stat-value ${d.overdueTotal ? "is-due" : ""}">${fmtMoney(d.overdueTotal)}</div></div>
     </div>
+
+    ${details}
 
     ${renderGasToDoCard(d)}
 
-    ${renderOnlinePaymentsCard(d)}
+    ${d.onlinePaymentsEnabled ? renderOnlinePaymentsCard(d) : ""}
 
     ${addBuildingForm}
 
@@ -1018,6 +1075,19 @@ function renderRoomView() {
   `;
 }
 
+// Tenant login status, and invite codes the owner shares so the tenant can sign up.
+function tenantLoginCard(tenant) {
+  const login = tenant.login || {};
+  if (login.hasAccount) {
+    return `<div class="card"><h3>Tenant login</h3><p class="profile-note">✓ ${esc(tenant.name)} has a login and can see their bills in the tenant portal.</p></div>`;
+  }
+  const active = login.inviteExpiresAt && new Date(login.inviteExpiresAt) > new Date();
+  const body = active
+    ? `<p class="profile-note">An invite code is active until <strong>${esc(displayDate(login.inviteExpiresAt))}</strong>. Codes are shown only once. If it was lost, create a new one (the old code stops working).</p><div class="form-actions"><button class="btn small" data-action="create-invite" data-id="${tenant.id}">Create new code</button><button class="btn small secondary" data-action="cancel-invite" data-id="${tenant.id}">Cancel invite</button></div>`
+    : `<p class="profile-note">${esc(tenant.name)} doesn't have a login yet. Create an invite code and share it with them. They sign up as a tenant using their mobile number (${esc(tenant.mobile || 'not set')}) and the code.</p><div class="form-actions"><button class="btn small" data-action="create-invite" data-id="${tenant.id}">Create invite code</button></div>`;
+  return `<div class="card"><h3>Tenant login</h3>${body}</div>`;
+}
+
 function renderTenantTab(r, tenant) {
   if (!tenant) {
     const form = state.forms.addTenant ? `
@@ -1050,10 +1120,9 @@ function renderTenantTab(r, tenant) {
         </div>
       </div>
       ${form}
+      ${previousTenantsCard(r)}
     `;
   }
-
-  const history = cache.tenants.filter((t) => t.roomId === r.id && !t.active);
 
   return `
     <div class="card">
@@ -1070,18 +1139,27 @@ function renderTenantTab(r, tenant) {
         <button class="btn danger small" data-action="move-out" data-id="${tenant.id}">Mark moved out</button>
       </div>
     </div>
-    ${history.length ? `
+    ${tenantLoginCard(tenant)}
+    ${window.RL_EXT ? RL_EXT.tenantLinks(tenant) : ""}
+    ${previousTenantsCard(r)}
+  `;
+}
+
+// Former tenants of a room: shown whether or not the room is occupied, so
+// the deposit settlement stays reachable after a move-out.
+function previousTenantsCard(r) {
+  const history = cache.tenants.filter((t) => t.roomId === r.id && !t.active);
+  if (!history.length) return "";
+  return `
       <div class="card">
         <h3>Previous tenants</h3>
         <table class="ledger">
           <thead><tr><th>Name</th><th>Mobile</th><th>Moved in</th><th>Moved out</th><th></th></tr></thead>
           <tbody>
-            ${history.map((t) => `<tr><td class="text">${esc(t.name)}</td><td>${esc(t.mobile || '—')}</td><td>${esc(t.moveInDate)}</td><td>${esc(t.moveOutDate)}</td><td><button class="btn small danger" data-action="delete-tenant" data-id="${t.id}">Remove record</button></td></tr>`).join("")}
+            ${history.map((t) => `<tr><td class="text">${esc(t.name)}</td><td>${esc(t.mobile || '—')}</td><td>${esc(t.moveInDate)}</td><td>${esc(t.moveOutDate)}</td><td><div class="row-actions"><button class="btn small secondary" data-nav="tenancy" data-id="${t.id}">Deposit & settlement</button><button class="btn small danger" data-action="delete-tenant" data-id="${t.id}">Remove record</button></div></td></tr>`).join("")}
           </tbody>
         </table>
-      </div>
-    ` : ""}
-  `;
+      </div>`;
 }
 
 function renderRentTab(r, tenant) {
@@ -1409,6 +1487,9 @@ function attachHandlers() {
       if (type === "building") { state.view = "building"; state.buildingId = nav.dataset.id; state.roomId = null; }
       if (type === "room") { state.view = "room"; state.roomId = nav.dataset.id; state.roomTab = cache.rooms.find((room) => room.id === nav.dataset.id)?.electricityOnly ? "electricity" : "tenant"; }
       if (type === "profile") { state.view = "profile"; state.buildingId = null; state.roomId = null; }
+      if (window.RL_EXT?.views[type]) { state.view = type; state.buildingId = null; state.roomId = null; }
+      state.params = { id: nav.dataset.id || null };
+      window.RL_EXT?.onNavigate?.();
       return render();
     }
 
@@ -1433,6 +1514,11 @@ function attachHandlers() {
 
     const action = e.target.closest("[data-action]");
     if (action) return withBusy(action, () => handleAction(action));
+  };
+
+  app.onchange = (e) => {
+    const el = e.target.closest("[data-ext-change]");
+    if (el && window.RL_EXT?.changes[el.dataset.extChange]) { RL_EXT.changes[el.dataset.extChange](el); state.forms = {}; render(); }
   };
 
   app.onkeydown = (e) => {
@@ -1461,8 +1547,20 @@ function attachHandlers() {
 async function handleAction(el) {
   const act = el.dataset.action;
   try {
+    if (window.RL_EXT?.actions[act]) {
+      if ((await RL_EXT.actions[act](el)) === false) return;
+      invalidateData();
+      await render();
+      return;
+    }
     if (act === "logout") {
       logout();
+      return;
+    } else if (act === "add-building") {
+      // The form lives on the dashboard, so go there and open it.
+      state.view = "dashboard"; state.buildingId = null; state.roomId = null; state.params = {};
+      state.forms = { addBuilding: true };
+      await render();
       return;
     } else if (act === "copy-text") {
       await copyText(el.dataset.text || "");
@@ -1476,6 +1574,21 @@ async function handleAction(el) {
       if (!(await confirmDialog("Their login, mobile numbers, email and ID-proof number will be removed permanently. Rent and bill history is kept.", { title: "Mark this tenant as moved out?", confirmLabel: "Move out", danger: true }))) return;
       await api("POST", `/api/tenants/${el.dataset.id}/move-out`, { moveOutDate: today() });
       toast("Tenant moved out; login and personal identifiers removed");
+    } else if (act === 'create-invite') {
+      const invite = await api('POST', `/api/tenants/${el.dataset.id}/invite`);
+      const tenant = cache.tenants.find((t) => t.id === el.dataset.id);
+      const until = displayDate(invite.expiresAt);
+      const appLink = isMobileApp ? '' : ` at ${location.origin}`;
+      const shareText = `Your Rent Ledger invite code is ${invite.code}. Sign up as a tenant${appLink} with your mobile number ${invite.mobile} and this code. It works once and expires on ${until}.`;
+      const copy = await confirmDialog(`Invite code ${invite.code} for ${tenant?.name || 'this tenant'}. It works once, with mobile ${invite.mobile}, until ${until}. It won't be shown again, so copy it now and send it to the tenant.`, { title: 'Invite code created', confirmLabel: 'Copy invite message' });
+      if (copy) await copyText(shareText);
+    } else if (act === 'cancel-invite') {
+      if (!(await confirmDialog("The current invite code will stop working.", { title: "Cancel this invite?", confirmLabel: "Cancel invite", danger: true }))) return;
+      await api('DELETE', `/api/tenants/${el.dataset.id}/invite`);
+      toast('Invite cancelled');
+    } else if (act === 'download-backup') {
+      await downloadBackup();
+      return;
     } else if (act === 'delete-tenant') {
       if (!(await confirmDialog("Their login is removed. Rent and bill history stays, but will no longer be linked to this tenant.", { title: "Remove this previous tenant?", confirmLabel: "Remove record", danger: true }))) return;
       await api('DELETE', `/api/tenants/${el.dataset.id}`);
@@ -1524,6 +1637,12 @@ async function handleSubmit(form) {
   const data = Object.fromEntries(new FormData(form).entries());
   const kind = form.dataset.submit;
   try {
+    if (window.RL_EXT?.submits[kind]) {
+      if ((await RL_EXT.submits[kind](data, form)) === false) return;
+      invalidateData();
+      await render();
+      return;
+    }
     if (kind === 'change-password') {
       if (data.newPassword !== data.confirmPassword) throw new Error('The new password and confirmation do not match.');
       const result = await api('PUT', '/api/account/password', { currentPassword: data.currentPassword, newPassword: data.newPassword });
@@ -1611,4 +1730,5 @@ async function handleSubmit(form) {
   }
 }
 
-render();
+// Start once every script (i18n, modules) has loaded.
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => render()); else render();
