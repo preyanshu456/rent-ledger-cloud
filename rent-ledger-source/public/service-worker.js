@@ -1,5 +1,5 @@
-const CACHE_NAME = 'rent-ledger-shell-v1';
-const APP_SHELL = ['/', '/index.html', '/style.css', '/app.js', '/manifest.webmanifest', '/assets/rent-ledger-icon.svg'];
+const CACHE_NAME = 'rent-ledger-shell-v3';
+const APP_SHELL = ['/', '/index.html', '/style.css', '/app.js', '/i18n.js', '/modules.js', '/manifest.webmanifest', '/assets/rent-ledger-icon.svg', '/sw-register.js'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));

@@ -1,19 +1,23 @@
 {
   "name": "rent-ledger",
   "version": "1.0.0",
-  "description": "Rent & electricity bill manager for buildings, floors, rooms and tenants",
+  "description": "Rent, electricity and gas billing for owners and tenants",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "test": "node --disable-warning=ExperimentalWarning --test test/*.test.js",
     "android:sync": "npx cap sync android",
     "android:apk": "npm run android:sync && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
-    "@capacitor/android": "^8.5.0",
-    "@capacitor/core": "^8.5.0",
     "express": "^4.19.2"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.5.0"
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0"
+  },
+  "engines": {
+    "node": ">=22.13"
   }
 }
