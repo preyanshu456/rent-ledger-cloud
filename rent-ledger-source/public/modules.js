@@ -39,7 +39,9 @@
   const empty = (text) => `<div class="empty-state"><div>${h(text)}</div></div>`;
   function table(columns, rows, { emptyText = 'Nothing here yet.', cls = '' } = {}) {
     if (!rows.length) return empty(emptyText);
-    return `<div class="table-wrap"><table class="ledger ${cls}"><thead><tr>${columns.map((c) => `<th>${h(c)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((cell) => `<td>${cell ?? ''}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    // Dates, amounts and percentages stay on one line; other cells may wrap.
+    const short = (cell) => /^(₹-?[\d,.]+|-?[\d,.]+%?|\d{4}-\d{2}(-\d{2})?|—|–)$/.test(String(cell ?? '').trim());
+    return `<div class="table-wrap"><table class="ledger ${cls}"><thead><tr>${columns.map((c) => `<th>${h(c)}</th>`).join('')}</tr></thead><tbody>${rows.map((r) => `<tr>${r.map((cell) => `<td${short(cell) ? ' class="nw"' : ''}>${cell ?? ''}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   }
   const field = (lbl, input, span = '') => `<div class="form-field" ${span ? `style="grid-column:${span}"` : ''}><label>${h(lbl)}</label>${input}</div>`;
   const tenantOptions = (selected, { activeOnly = true, blank = 'Choose tenant' } = {}) => `<option value="">${h(blank)}</option>` + cache.tenants.filter((t) => !activeOnly || t.active).map((t) => {
