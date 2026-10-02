@@ -6,7 +6,8 @@ WORKDIR /app
 
 # Install dependencies first (better layer caching)
 COPY rent-ledger-source/package*.json ./
-RUN npm install --omit=dev
+# npm ci installs exactly what package-lock.json lists (reproducible builds).
+RUN npm ci --omit=dev
 
 # Copy the rest of the app folder as-is — whatever is committed to GitHub
 # under rent-ledger-source/ is exactly what ends up in the image, no zip
@@ -18,4 +19,5 @@ ENV NODE_ENV=production
 ENV PORT=8080
 ENV DATA_DIR=/data
 EXPOSE 8080
-CMD ["node", "server.js"]
+# node:sqlite is built in (Node 22.13+); the flag only hides its "experimental" notice.
+CMD ["node", "--disable-warning=ExperimentalWarning", "server.js"]
