@@ -46,10 +46,6 @@ function themePicker() {
   const active = currentThemeId();
   return `<article class="card profile-card appearance-card"><h3>Appearance <small>this device</small></h3><p class="profile-note">Choose a colour theme. It changes the whole app on this device and is remembered next time.</p><div class="theme-grid" role="group" aria-label="Colour theme">${THEMES.map((t) => `<button type="button" class="theme-option" data-theme-pick="${t.id}" aria-pressed="${t.id === active}"><span class="theme-swatch" style="${themeSwatchStyle(t)}"></span><span class="theme-name">${t.name}</span></button>`).join('')}</div></article>`;
 }
-function sidebarThemeDots() {
-  const active = currentThemeId();
-  return `<div class="sidebar-themes" role="group" aria-label="Colour theme"><span>Theme</span>${THEMES.map((t) => `<button type="button" class="theme-dot" data-theme-pick="${t.id}" aria-pressed="${t.id === active}" title="${t.name}" aria-label="${t.name} theme" style="background:linear-gradient(135deg, ${t.primary} 55%, ${t.warm} 56%)"></button>`).join('')}</div>`;
-}
 function pickTheme(id) {
   if (id === currentThemeId()) return;
   try { localStorage.setItem('rentLedgerTheme', id); } catch {}
@@ -90,6 +86,10 @@ document.addEventListener('click', (event) => {
   const pick = event.target.closest('[data-theme-pick]');
   if (pick) pickTheme(pick.dataset.themePick);
 });
+// Remember whether the dashboard's "Show details" is open across re-renders.
+document.addEventListener('toggle', (event) => {
+  if (event.target.matches?.('.dash-details')) state.dashDetails = event.target.open;
+}, true);
 
 const session = JSON.parse(localStorage.getItem('rentLedgerSession') || 'null');
 const authState = { resetContact: '' };
@@ -337,7 +337,7 @@ function paintSkeleton(kind) {
   if (kind === "tenant") {
     app.innerHTML = `<div class="tenant-shell" aria-busy="true"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div></header><main class="tenant-main"><span class="sr-only">Loading your home…</span><div class="sk-stack">${sk("90px", "12px")}${sk("min(420px, 80%)", "40px")}${sk("180px", "14px")}</div><div class="sk-block">${sk("100%", "124px", 20)}</div><div class="sk-grid">${sk("100%", "220px", 16).repeat(3)}</div></main></div>`;
   } else {
-    app.innerHTML = `<div class="sidebar"><div class="brand">Rent Ledger <span class="brand-mark">v1</span></div><div class="sk-stack sk-dark">${sk("85%", "34px", 9).repeat(4)}</div></div><div class="main" aria-busy="true"><span class="sr-only">Loading your dashboard…</span><div class="sk-stack">${sk("220px", "36px")}${sk("280px", "12px")}</div><div class="sk-grid sk-stats">${sk("100%", "96px", 16).repeat(8)}</div><div class="sk-block">${sk("100%", "240px", 16)}</div></div>`;
+    app.innerHTML = `<div class="sidebar"><div class="brand">Rent Ledger</div><div class="sk-stack sk-dark">${sk("85%", "34px", 9).repeat(4)}</div></div><div class="main" aria-busy="true"><span class="sr-only">Loading your dashboard…</span><div class="sk-stack">${sk("220px", "36px")}${sk("280px", "12px")}</div><div class="sk-grid sk-stats">${sk("100%", "96px", 16).repeat(4)}</div><div class="sk-block">${sk("100%", "240px", 16)}</div></div>`;
   }
 }
 
@@ -796,19 +796,20 @@ function renderSidebar() {
 
   return `
     <div class="sidebar">
-      <div class="brand" data-nav="dashboard" style="cursor:pointer">
-        Rent Ledger <span class="brand-mark">v1</span>
+      <div class="side-top">
+        <div class="brand" data-nav="dashboard" style="cursor:pointer">Rent Ledger</div>
+        ${window.RL_EXT?.sidebarBell ? RL_EXT.sidebarBell() : ""}
       </div>
       <div class="sidebar-scroll">
         ${window.RL_EXT ? RL_EXT.sidebarNav() : ""}
         <div class="side-group-label">Properties</div>
         ${buildingsHtml || `<div style="opacity:.6; font-size:13px; padding:8px;">No buildings yet.</div>`}
+        <button class="side-add" data-action="add-building">+ Add building</button>
       </div>
-      <button class="sidebar-add" data-toggle-form="addBuilding">+ Add building</button>
-      <button class="sidebar-profile ${state.view === 'profile' ? 'active' : ''}" data-nav="profile">◉ View your profile</button>
-      <button class="sidebar-logout" data-action="logout">↪ Sign out</button>
-      ${sidebarThemeDots()}
-      ${window.RL_EXT ? RL_EXT.sidebarFooter() : ""}
+      <div class="side-foot">
+        <button class="side-foot-btn ${state.view === 'profile' ? 'active' : ''}" data-nav="profile">Profile</button>
+        <button class="side-foot-btn" data-action="logout">Sign out</button>
+      </div>
     </div>
   `;
 }
@@ -867,29 +868,38 @@ function renderDashboard() {
     </div>
   ` : "";
 
+  // Four headline numbers; the rent / electricity / gas split is one click away.
+  const addRupees = (...values) => Math.round(values.reduce((sum, v) => sum + (Number(v) || 0), 0) * 100) / 100;
+  const collected = addRupees(d.rentCollected, d.elecCollected, d.gasCollected);
+  const pending = addRupees(d.rentPending, d.elecPending, d.gasPending);
+  const splitRow = (name, got, owed, open) => `<tr><td class="text">${name}</td><td>${fmtMoney(got)}</td><td>${fmtMoney(owed)}</td><td>${open ?? "–"}</td></tr>`;
+  const details = `
+    <details class="card dash-details" ${state.dashDetails ? "open" : ""}>
+      <summary>Show details</summary>
+      <div class="table-scroll"><table class="ledger dash-split"><thead><tr><th>This month</th><th>Collected</th><th>Still to collect</th><th>Open bills (all months)</th></tr></thead><tbody>
+        ${splitRow("Rent", d.rentCollected, d.rentPending, d.outstandingRentEntries)}
+        ${splitRow("Electricity", d.elecCollected, d.elecPending, d.outstandingElectricityEntries)}
+        ${splitRow("Gas", d.gasCollected, d.gasPending, d.outstandingGasEntries)}
+      </tbody></table></div>
+      <p class="dash-more"><span class="dm-item">Buildings <b>${d.totalBuildings ?? "–"}</b></span><span class="dm-item">Vacant rooms <b>${d.vacantRooms ?? "–"}</b></span>${window.RL_EXT ? RL_EXT.dashboardExtras() : ""}</p>
+    </details>`;
+
   return `
     <div class="page-title">Dashboard</div>
-    <div class="page-sub">${MONTHS[d.month] || ""} ${d.year || ""} · overview across all buildings</div>
+    <div class="page-sub">${MONTHS[d.month] || ""} ${d.year || ""}</div>
 
-    <div class="stat-grid">
-      <div class="stat-card"><div class="stat-label">Buildings</div><div class="stat-value">${d.totalBuildings ?? "–"}</div></div>
-      <div class="stat-card good"><div class="stat-label">Occupied rooms</div><div class="stat-value">${d.occupiedRooms ?? "–"} / ${d.totalRooms ?? "–"}</div></div>
-      <div class="stat-card good"><div class="stat-label">Rent collected (this mo.)</div><div class="stat-value">${fmtMoney(d.rentCollected)}</div></div>
-      <div class="stat-card warn"><div class="stat-label">Rent pending (this mo.)</div><div class="stat-value">${fmtMoney(d.rentPending)}</div></div>
-      <div class="stat-card good"><div class="stat-label">Electricity collected</div><div class="stat-value">${fmtMoney(d.elecCollected)}</div></div>
-      <div class="stat-card warn"><div class="stat-label">Electricity pending</div><div class="stat-value">${fmtMoney(d.elecPending)}</div></div>
-      <div class="stat-card good"><div class="stat-label">Gas collected</div><div class="stat-value">${fmtMoney(d.gasCollected)}</div></div>
-      <div class="stat-card warn"><div class="stat-label">Gas pending</div><div class="stat-value">${fmtMoney(d.gasPending)}</div></div>
-      <div class="stat-card warn"><div class="stat-label">Open rent entries</div><div class="stat-value">${d.outstandingRentEntries ?? "–"}</div></div>
-      <div class="stat-card warn"><div class="stat-label">Open electricity entries</div><div class="stat-value">${d.outstandingElectricityEntries ?? "–"}</div></div>
-      <div class="stat-card warn"><div class="stat-label">Open gas entries</div><div class="stat-value">${d.outstandingGasEntries ?? "–"}</div></div>
+    <div class="stat-grid stat-grid-4">
+      <div class="stat-card good"><div class="stat-label">Rooms occupied</div><div class="stat-value">${d.occupiedRooms ?? "–"} / ${d.totalRooms ?? "–"}</div></div>
+      <div class="stat-card good"><div class="stat-label">Collected this month</div><div class="stat-value">${fmtMoney(collected)}</div></div>
+      <div class="stat-card warn"><div class="stat-label">Still to collect</div><div class="stat-value">${fmtMoney(pending)}</div></div>
+      <div class="stat-card warn"><div class="stat-label">Overdue</div><div class="stat-value ${d.overdueTotal ? "is-due" : ""}">${fmtMoney(d.overdueTotal)}</div></div>
     </div>
 
-    ${window.RL_EXT ? RL_EXT.dashboardExtras() : ""}
+    ${details}
 
     ${renderGasToDoCard(d)}
 
-    ${renderOnlinePaymentsCard(d)}
+    ${d.onlinePaymentsEnabled ? renderOnlinePaymentsCard(d) : ""}
 
     ${addBuildingForm}
 
@@ -1545,6 +1555,12 @@ async function handleAction(el) {
     }
     if (act === "logout") {
       logout();
+      return;
+    } else if (act === "add-building") {
+      // The form lives on the dashboard, so go there and open it.
+      state.view = "dashboard"; state.buildingId = null; state.roomId = null; state.params = {};
+      state.forms = { addBuilding: true };
+      await render();
       return;
     } else if (act === "copy-text") {
       await copyText(el.dataset.text || "");
