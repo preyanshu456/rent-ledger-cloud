@@ -2,7 +2,9 @@
 const { toRupees } = require("../lib/money");
 const finance = require("../services/finance");
 const accounts = require("../services/accounts");
-const { requirePermission, sendCsv, escapeHtml, printablePage } = require("./common");
+const billing = require("../services/billing");
+const { audit } = require("../services/audit");
+const { requirePermission, sendCsv, escapeHtml, printablePage, ctxOf } = require("./common");
 
 function rupeesDeep(obj) {
   if (Array.isArray(obj)) return obj.map(rupeesDeep);
@@ -18,6 +20,39 @@ function rupeesDeep(obj) {
 }
 
 function register(app, { db, todayFor }) {
+  // ---------- bills for pending amounts (per room / tenant) ----------
+  // Preview: who owes what, filtered by property, floor, room and type.
+  app.get("/api/bills/preview", requirePermission("reports.view"), (req, res) => {
+    const filters = billing.parseFilters(req.query);
+    const { bills, former } = billing.collectBills(db, req.orgId, filters, todayFor(req));
+    const sum = (k) => bills.reduce((s, b) => s + b[k], 0);
+    res.json({
+      filters: { ...filters, keys: undefined },
+      bills: bills.map(billing.billView),
+      totals: { bills: bills.length, pending: toRupees(sum("pendingPaise")), credit: toRupees(sum("creditPaise")), payable: toRupees(sum("payablePaise")) },
+      former: { count: former.count, pending: toRupees(former.paise) },
+    });
+  });
+
+  // PDF: one bill (one or more pages) per room / tenant. POST so a long list
+  // of chosen bills fits; nothing is changed.
+  app.post("/api/bills/pdf", requirePermission("reports.view"), (req, res) => {
+    const today = todayFor(req);
+    const filters = billing.parseFilters(req.body || {});
+    const { bills } = billing.collectBills(db, req.orgId, filters, today);
+    if (!bills.length) return res.status(404).json({ error: "Nothing is pending for this choice." });
+    const org = accounts.getOrg(db, req.orgId);
+    const pdf = billing.renderBillsPdf({ orgName: org.name, bills, today, paymentDetails: org.settings.bills.paymentDetails });
+    audit(db, ctxOf(req), "bills.pdf_created", "organization", req.orgId, { bills: bills.length, kinds: filters.kinds, buildingId: filters.buildingId || null, floor: filters.floor, roomId: filters.roomId || null });
+    const slug = (s) => String(s || "").normalize("NFKD").replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+    const name = bills.length === 1
+      ? `bill-${[slug(bills[0].buildingName), slug(bills[0].roomLabel), slug(bills[0].tenantName)].filter(Boolean).join("-")}-${today}.pdf`
+      : `bills-${filters.buildingId ? `${slug(bills[0].buildingName)}-` : ""}${filters.floor !== null ? `${slug(billing.floorName(filters.floor))}-` : ""}${today}.pdf`;
+    res.setHeader("Content-Disposition", `attachment; filename="${name.replace(/[^A-Za-z0-9._-]/g, "_")}"`);
+    res.setHeader("Cache-Control", "no-store");
+    res.type("application/pdf").send(pdf);
+  });
+
   app.get("/api/finance/summary", requirePermission("reports.view"), (req, res) => {
     res.json(rupeesDeep(finance.summary(db, req.orgId, req.query, todayFor(req))));
   });
