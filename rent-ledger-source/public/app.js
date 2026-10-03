@@ -390,10 +390,34 @@ function placeTabIndicator(root, animateFromPrevious) {
 }
 
 // Swaps in new markup with the right amount of motion for what changed.
-function paint(html, { pageChanged, tabChanged, after }) {
+// The sidebar is kept in place between renders when only its highlighted
+// item changed, so it doesn't flash, lose its scroll position or redraw its
+// scrollbar on every click. Anything else (new building, unread count, more
+// rooms) rebuilds it as before.
+const sidebarKey = (html) => `${window.RL_I18N?.lang || "en"}|${html.replace(/\s(class|aria-expanded|aria-pressed)="[^"]*"/g, "")}`;
+function patchSidebar(oldSide, html) {
+  const tpl = document.createElement("template");
+  tpl.innerHTML = html.trim();
+  const fresh = tpl.content.firstElementChild;
+  if (!fresh) return false;
+  const a = [oldSide, ...oldSide.querySelectorAll("*")];
+  const b = [fresh, ...fresh.querySelectorAll("*")];
+  if (a.length !== b.length || a.some((el, i) => el.tagName !== b[i].tagName)) return false;
+  a.forEach((el, i) => {
+    for (const attr of ["class", "aria-expanded", "aria-pressed"]) {
+      const v = b[i].getAttribute(attr);
+      if (el.getAttribute(attr) !== v) { if (v === null) el.removeAttribute(attr); else el.setAttribute(attr, v); }
+    }
+  });
+  return true;
+}
+
+function paint(html, { pageChanged, tabChanged, after, sideHtml, mainHtml }) {
   const app = document.getElementById("app");
   const animate = !reducedMotion();
-  const scrollY = window.scrollY;
+  // On computers the page scrolls inside <body> (see style.css); on phones it's the window.
+  const scroller = ["auto", "scroll"].includes(getComputedStyle(document.body).overflowY) ? document.body : (document.scrollingElement || document.documentElement);
+  const scrollY = scroller.scrollTop;
   const sideScroll = app.querySelector(".sidebar-scroll");
   const sideTop = sideScroll ? sideScroll.scrollTop : 0;
   const sideLeft = sideScroll ? sideScroll.scrollLeft : 0;
@@ -402,12 +426,21 @@ function paint(html, { pageChanged, tabChanged, after }) {
   const useTransition = pageChanged && !firstMount && animate && typeof document.startViewTransition === "function";
 
   const swap = () => {
-    app.innerHTML = html;
+    const oldSide = app.querySelector(":scope > .sidebar");
+    const oldMain = app.querySelector(":scope > .main");
+    const reuse = sideHtml && mainHtml && oldSide && oldMain && ui.sideKey === sidebarKey(sideHtml);
+    if (reuse && patchSidebar(oldSide, sideHtml)) {
+      app.querySelectorAll(":scope > .more-list").forEach((el) => el.remove());
+      oldMain.outerHTML = mainHtml;
+    } else {
+      app.innerHTML = html;
+    }
+    ui.sideKey = sideHtml ? sidebarKey(sideHtml) : null;
     const side = app.querySelector(".sidebar");
     if (side && firstMount && animate) side.classList.add("sidebar-enter");
     const newSide = app.querySelector(".sidebar-scroll");
     if (newSide) { newSide.scrollTop = sideTop; newSide.scrollLeft = sideLeft; }
-    window.scrollTo({ top: pageChanged ? 0 : scrollY, left: 0, behavior: "instant" });
+    scroller.scrollTo({ top: pageChanged ? 0 : scrollY, left: 0, behavior: "instant" });
     const main = app.querySelector(".main, .tenant-main");
 
     // Page-level entrance: fade the page in and let its cards rise in sequence.
@@ -546,7 +579,9 @@ async function render() {
   }
   progressDone();
   if (seq !== ui.renderSeq) return;
-  paint(renderSidebar() + `<div class="main">${renderMain()}</div>`, { pageChanged, tabChanged, after: () => { attachHandlers(); window.RL_EXT?.afterRender?.(); } });
+  const sideHtml = renderSidebar();
+  const mainHtml = `<div class="main">${renderMain()}</div>`;
+  paint(sideHtml + mainHtml, { pageChanged, tabChanged, sideHtml, mainHtml, after: () => { attachHandlers(); window.RL_EXT?.afterRender?.(); } });
   settle();
 }
 
