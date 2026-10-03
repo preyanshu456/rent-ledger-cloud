@@ -138,6 +138,61 @@
   X.sidebarBell = () => `<button type="button" class="side-bell ${state.view === 'notifications' ? 'active' : ''}" data-nav="notifications" title="Notifications" aria-label="Notifications${X.unread ? `, ${X.unread} unread` : ''}"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0"/></svg>${X.unread ? `<span class="nav-count">${X.unread}</span>` : ''}</button>`;
   X.sidebarFooter = () => '';
 
+  // ---------- phones: bottom tab bar + "More" panel ----------
+  // Shown only on narrow screens (see style.css); the sidebar is used on computers.
+  const ICONS = {
+    home: '<path d="M4 11.2 12 4.8l8 6.4V19a1 1 0 0 1-1 1h-4.5v-5.2h-5V20H5a1 1 0 0 1-1-1z"/>',
+    bills: '<path d="M7 3.8h10a1 1 0 0 1 1 1V20l-3-1.8-3 1.8-3-1.8L6 20V4.8a1 1 0 0 1 1-1z"/><path d="M9.2 8.6h5.6M9.2 12.4h5.6"/>',
+    remind: '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4 7 8 6 8-6"/>',
+    repairs: '<path d="M14.7 4.2a4.3 4.3 0 0 0-4 5.6L4.6 15.9a2 2 0 0 0 2.9 2.9l6.1-6.1a4.3 4.3 0 0 0 5.6-4l-2.6 2.6-2.4-.5-.5-2.4 2.6-2.6c-.5-.4-1.1-.6-1.6-.6z"/>',
+    more: '<circle cx="5.5" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.7" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.7" fill="currentColor" stroke="none"/>',
+    finance: '<path d="M4 19.5h16"/><path d="M7 16v-4M12 16V7M17 16v-6.5"/>',
+    leases: '<path d="M7 3.8h7l4 4V19a1.2 1.2 0 0 1-1.2 1.2H7A1.2 1.2 0 0 1 5.8 19V5A1.2 1.2 0 0 1 7 3.8z"/><path d="M13.8 3.8v4.2H18M9 12.5h6M9 16h6"/>',
+    expenses: '<rect x="3.5" y="6.5" width="17" height="12" rx="2"/><path d="M3.5 10.5h17M16 14.5h1.5"/>',
+    reconciliation: '<path d="M4 9.5 12 5l8 4.5M5.5 10v7M10 10v7M14 10v7M18.5 10v7M4 19.5h16"/>',
+    reports: '<path d="M7 3.8h10a1.2 1.2 0 0 1 1.2 1.2v14a1.2 1.2 0 0 1-1.2 1.2H7A1.2 1.2 0 0 1 5.8 19V5A1.2 1.2 0 0 1 7 3.8z"/><path d="M9 8.5h6M9 12h6M9 15.5h3.5"/>',
+    insights: '<path d="M4 17l5-5 3.5 3.5L20 8"/><path d="M15 8h5v5"/>',
+    assistant: '<path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 16.5h-7l-4.5 3.5v-3.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z"/>',
+    settings: '<circle cx="12" cy="12" r="3"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M6 18l1.6-1.6M16.4 7.6 18 6"/>',
+    messages: '<path d="M5 5.5h14a1.5 1.5 0 0 1 1.5 1.5v8A1.5 1.5 0 0 1 19 16.5h-7l-4.5 3.5v-3.5H5A1.5 1.5 0 0 1 3.5 15V7A1.5 1.5 0 0 1 5 5.5z"/>',
+    documents: '<path d="M7 3.8h7l4 4V19a1.2 1.2 0 0 1-1.2 1.2H7A1.2 1.2 0 0 1 5.8 19V5A1.2 1.2 0 0 1 7 3.8z"/><path d="M13.8 3.8v4.2H18"/>',
+    profile: '<circle cx="12" cy="8.5" r="3.6"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>',
+    bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0"/>',
+  };
+  const icon = (name) => `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`;
+  const MOBILE_TABS = [['dashboard', 'Home', 'home', null], ['ledger', 'Bills', 'bills', 'reports.view'], ['reminders', 'Reminders', 'remind', 'reminders.manage'], ['maintenance', 'Repairs', 'repairs', 'maintenance.manage']];
+  X.mobileNav = () => {
+    const tabs = MOBILE_TABS.filter(navAllowed);
+    const inTabs = tabs.some(([v]) => v === state.view);
+    const sections = [...NAV_MORE, ['settings', 'Settings', null]].filter(navAllowed);
+    const buildings = (cache.buildings || []).map((b) => {
+      const rooms = (cache.rooms || []).filter((r) => r.buildingId === b.id);
+      const occ = rooms.filter((r) => r.status === 'occupied').length;
+      return `<button type="button" class="msheet-row ${state.buildingId === b.id ? 'active' : ''}" data-nav="building" data-id="${b.id}"><span>${h(b.name)}</span><small>${occ}/${rooms.length}</small></button>`;
+    }).join('');
+    return `<nav class="mnav" aria-label="Sections">${tabs.map(([view, text, ic]) => `<button type="button" class="mnav-btn ${state.view === view ? 'active' : ''}" data-nav="${view}" ${state.view === view ? 'aria-current="page"' : ''}>${icon(ic)}<span>${h(text)}</span></button>`).join('')}<button type="button" class="mnav-btn ${inTabs ? '' : 'active'}" data-action="mnav-more" aria-haspopup="dialog">${icon('more')}<span>More</span></button></nav>
+      <div class="msheet" hidden><div class="msheet-backdrop" data-action="mnav-close"></div><div class="msheet-panel" role="dialog" aria-label="More">
+        <div class="msheet-grip" aria-hidden="true"></div>
+        <div class="msheet-grid">${sections.map(([view, text]) => `<button type="button" class="${state.view === view ? 'active' : ''}" data-nav="${view}">${icon(view)}<span>${h(text)}</span></button>`).join('')}</div>
+        <div class="msheet-label">Properties</div>
+        <div class="msheet-list">${buildings || '<p class="muted">No buildings yet.</p>'}<button type="button" class="msheet-row add" data-action="add-building"><span>+ Add building</span></button></div>
+        <div class="msheet-foot"><button type="button" class="btn secondary" data-nav="profile">Profile</button><button type="button" class="btn secondary" data-action="logout">Sign out</button></div>
+      </div></div>`;
+  };
+  const setSheet = (open) => {
+    const sheet = document.querySelector('.msheet');
+    if (!sheet) return;
+    sheet.hidden = !open;
+    document.body.classList.toggle('sheet-open', open);
+  };
+  X.actions['mnav-more'] = () => { setSheet(document.querySelector('.msheet')?.hidden); return false; };
+  X.actions['mnav-close'] = () => { setSheet(false); return false; };
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setSheet(false); });
+  // Tenants: Home, Repairs, Messages, Documents, Profile at the bottom; notifications are the bell at the top.
+  const TENANT_TABS = [['home', 'Home', 'home'], ['maintenance', 'Repairs', 'repairs'], ['messages', 'Messages', 'messages'], ['documents', 'Documents', 'documents'], ['profile', 'Profile', 'profile']];
+  X.tenantMobileNav = () => `<nav class="mnav tenant-mnav" aria-label="Sections">${TENANT_TABS.map(([k, text, ic]) => `<button type="button" class="mnav-btn ${state.tenantView === k ? 'active' : ''}" data-tenant-nav="${k}">${icon(ic)}<span>${h(text)}</span></button>`).join('')}</nav>`;
+  X.tenantBell = () => `<button type="button" class="side-bell tenant-bell ${state.tenantView === 'notifications' ? 'active' : ''}" data-tenant-nav="notifications" aria-label="Notifications${X.tenantUnread ? `, ${X.tenantUnread} unread` : ''}">${icon('bell')}${X.tenantUnread ? `<span class="nav-count">${X.tenantUnread}</span>` : ''}</button>`;
+
   // Called before every owner/manager render.
   X.beforeOwnerRender = async () => {
     if (!X.me) { try { X.me = await api('GET', '/api/auth/me'); } catch { X.me = { permissions: [] }; } }
@@ -661,7 +716,40 @@
     const log = document.getElementById('chat-log'); if (log) log.scrollTop = log.scrollHeight;
     compactButtons(document.getElementById('app'));
     keepActiveInView();
+    document.body.classList.remove('sheet-open');
+    labelTables(document.getElementById('app'));
+    fitTables();
   };
+
+  // ---------- phones: tables that don't fit become cards ----------
+  // Each cell gets its column name, so on a phone a row can show as a small
+  // card ("Amount ₹11,000") instead of a table running off the screen.
+  function labelTables(root) {
+    if (!root) return;
+    root.querySelectorAll('table').forEach((tbl) => {
+      const tt = window.RL_I18N ? RL_I18N.t : (x) => x; // labels follow the chosen language
+      const heads = [...tbl.querySelectorAll(':scope > thead th')].map((th) => tt(th.textContent.trim()));
+      if (!heads.length) return;
+      tbl.classList.add('has-labels');
+      tbl.querySelectorAll(':scope > tbody > tr').forEach((tr) => {
+        [...tr.children].forEach((td, i) => {
+          if (!td.hasAttribute('data-label')) td.setAttribute('data-label', heads[i] || '');
+          if (td.querySelector(':scope > .row-actions > .more-menu, :scope > .more-menu') && !td.querySelector('.row-actions > button')) td.classList.add('cell-menu');
+        });
+      });
+    });
+  }
+  const phone = window.matchMedia('(max-width: 600px)');
+  function fitTables() {
+    document.querySelectorAll('#app table.has-labels').forEach((tbl) => {
+      tbl.classList.remove('as-cards');
+      if (!phone.matches) return;
+      const box = tbl.closest('.table-wrap, .table-scroll') || tbl.parentElement;
+      if (tbl.scrollWidth > box.clientWidth + 2) tbl.classList.add('as-cards');
+    });
+  }
+  let fitTimer = null;
+  window.addEventListener('resize', () => { clearTimeout(fitTimer); fitTimer = setTimeout(fitTables, 150); });
   // When the sidebar has to scroll, keep the section or room you're on in view.
   // (Only the sidebar's own scroll position changes, never the page's.)
   function keepActiveInView() {
@@ -728,8 +816,11 @@
     const r = summary.getBoundingClientRect();
     const w = list.offsetWidth; const ht = list.offsetHeight;
     const left = Math.min(window.innerWidth - w - 8, Math.max(8, r.right - w));
+    // Stay clear of the phone's bottom tab bar.
+    const bar = document.querySelector('.mnav');
+    const floor = window.innerHeight - (bar && bar.offsetParent ? bar.offsetHeight + 16 : 0) - 8;
     let top = r.bottom + 6;
-    if (top + ht > window.innerHeight - 8) top = Math.max(8, r.top - ht - 6);
+    if (top + ht > floor) top = Math.max(8, r.top - ht - 6);
     list.style.left = `${left}px`; list.style.top = `${top}px`;
   }
   function closeMenus(except) { document.querySelectorAll('details.more-menu[open]').forEach((m) => { if (m !== except) m.open = false; }); }
@@ -965,7 +1056,7 @@
       ${other.length ? card('Other charges', table(['Charge', 'Due', 'Amount', 'Outstanding', 'Status'], other)) : ''}
       ${card('Payments & receipts', table(['Date', 'Amount', 'Method', 'Status', ''], receipts, { emptyText: 'No payments recorded yet.' }))}</section>`;
   };
-  const tenantShell = (title, sub, body) => `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user">${window.RL_I18N ? RL_I18N.picker() : ''}<button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main">${X.tenantNav()}<p class="kicker">${h(sub)}</p><h1>${h(title)}</h1>${body}</main></div>`;
+  const tenantShell = (title, sub, body) => `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user">${window.RL_I18N ? RL_I18N.picker() : ''}${X.tenantBell()}<button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main">${X.tenantNav()}<p class="kicker">${h(sub)}</p><h1>${h(title)}</h1>${body}</main></div>`;
 
   // Maintenance
   X.tenantLoaders.maintenance = async () => {
