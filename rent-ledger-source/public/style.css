@@ -1517,3 +1517,13 @@ html { scrollbar-color: rgba(var(--c8), .32) transparent; }
   .sidebar-scroll { scrollbar-width: none; }
   .sidebar-scroll::-webkit-scrollbar { display: none; }
 }
+/* No jumping when a page is taller or shorter than the window. On computers
+   the page scrolls inside <body> with the scrollbar's space always kept, so
+   the layout doesn't shift sideways as the scrollbar comes and goes between
+   pages, and the empty space shows the scenery instead of a plain strip.
+   Phones keep normal page scrolling (their scrollbars take no space). */
+@media (min-width: 861px) {
+  html { overflow: hidden; height: 100%; }
+  body { height: 100%; overflow-x: hidden; overflow-y: auto; scrollbar-gutter: stable; scrollbar-color: rgba(var(--c8), .32) transparent; }
+  .sidebar-scroll { scrollbar-gutter: stable; }
+}
