@@ -412,7 +412,7 @@ function patchSidebar(oldSide, html) {
   return true;
 }
 
-function paint(html, { pageChanged, tabChanged, after, sideHtml, mainHtml }) {
+function paint(html, { pageChanged, tabChanged, after, sideHtml, mainHtml, extraHtml = "" }) {
   const app = document.getElementById("app");
   const animate = !reducedMotion();
   // On computers the page scrolls inside <body> (see style.css); on phones it's the window.
@@ -430,8 +430,9 @@ function paint(html, { pageChanged, tabChanged, after, sideHtml, mainHtml }) {
     const oldMain = app.querySelector(":scope > .main");
     const reuse = sideHtml && mainHtml && oldSide && oldMain && ui.sideKey === sidebarKey(sideHtml);
     if (reuse && patchSidebar(oldSide, sideHtml)) {
-      app.querySelectorAll(":scope > .more-list").forEach((el) => el.remove());
+      app.querySelectorAll(":scope > .more-list, :scope > .mnav, :scope > .msheet").forEach((el) => el.remove());
       oldMain.outerHTML = mainHtml;
+      if (extraHtml) app.insertAdjacentHTML("beforeend", extraHtml);
     } else {
       app.innerHTML = html;
     }
@@ -551,7 +552,8 @@ async function render() {
     progressDone();
     if (seq !== ui.renderSeq) return;
     const tenantExt = window.RL_EXT?.tenantViews[state.tenantView];
-    paint(tenantExt ? tenantExt() : state.tenantView === 'profile' ? renderTenantProfile() : renderTenantPortal(), { pageChanged, tabChanged: false, after: () => { attachTenantHandlers(); window.RL_EXT?.afterRender?.(); } });
+    const tenantPhoneNav = window.RL_EXT?.tenantMobileNav ? RL_EXT.tenantMobileNav() : '';
+    paint((tenantExt ? tenantExt() : state.tenantView === 'profile' ? renderTenantProfile() : renderTenantPortal()) + tenantPhoneNav, { pageChanged, tabChanged: false, after: () => { attachTenantHandlers(); window.RL_EXT?.afterRender?.(); } });
     settle();
     return;
   }
@@ -581,7 +583,8 @@ async function render() {
   if (seq !== ui.renderSeq) return;
   const sideHtml = renderSidebar();
   const mainHtml = `<div class="main">${renderMain()}</div>`;
-  paint(sideHtml + mainHtml, { pageChanged, tabChanged, sideHtml, mainHtml, after: () => { attachHandlers(); window.RL_EXT?.afterRender?.(); } });
+  const extraHtml = window.RL_EXT?.mobileNav ? RL_EXT.mobileNav() : "";
+  paint(sideHtml + mainHtml + extraHtml, { pageChanged, tabChanged, sideHtml, mainHtml, extraHtml, after: () => { attachHandlers(); window.RL_EXT?.afterRender?.(); } });
   settle();
 }
 
@@ -640,7 +643,7 @@ function renderTenantPortal() {
       : `<section class="card pay-all-card muted"><div><span class="kicker">TOTAL PENDING</span><strong>${fmtMoney(totalDue)}</strong><small>Online payment isn't enabled by your owner yet. Pay them directly and add a payment proof below.</small></div></section>`)
     : '';
   const table = (title, entries, type) => `<article class="card"><h3><span>${title}</span><small>Last 6 entries</small></h3><table class="ledger tenant-ledger"><thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Payment</th></tr></thead><tbody>${billRows(entries, type)}</tbody></table></article>`;
-  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><span>Welcome, <b>${esc(d.tenant.name)}</b></span>${window.RL_I18N ? RL_I18N.picker() : ''}<button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main">${window.RL_EXT ? RL_EXT.tenantNav() : ''}<p class="kicker">YOUR HOME</p><h1>${esc(d.building.name)}</h1><p class="tenant-address">${esc(d.room.label)} · Floor ${d.room.floorNumber}</p><section class="tenant-hero"><div><span>Monthly rent</span><strong>${fmtMoney(d.room.monthlyRent)}</strong><small>Your fixed monthly rental</small></div><div><span>Rent outstanding</span><strong class="${rentDue ? 'is-due' : ''}">${fmtMoney(rentDue)}</strong><small>${rentDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Electricity outstanding</span><strong class="${elecDue ? 'is-due' : ''}">${fmtMoney(elecDue)}</strong><small>${elecDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Gas outstanding</span><strong class="${gasDue ? 'is-due' : ''}">${fmtMoney(gasDue)}</strong><small>${gasDue ? 'Payment pending' : 'All caught up'}</small></div></section>${payAll}${window.RL_EXT ? RL_EXT.tenantHomeExtras(d) : ''}<section class="tenant-bills">${table('Rent history', d.rent, 'rent')}${table('Electricity bills', d.electricity, 'electricity')}${table('Gas bills', gasEntries, 'gas')}</section><input type="file" data-receipt-file accept="image/jpeg,image/png,image/webp,application/pdf" hidden></main></div>`;
+  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><span>Welcome, <b>${esc(d.tenant.name)}</b></span>${window.RL_I18N ? RL_I18N.picker() : ''}${window.RL_EXT?.tenantBell ? RL_EXT.tenantBell() : ''}<button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main">${window.RL_EXT ? RL_EXT.tenantNav() : ''}<p class="kicker">YOUR HOME</p><h1>${esc(d.building.name)}</h1><p class="tenant-address">${esc(d.room.label)} · Floor ${d.room.floorNumber}</p><section class="tenant-hero"><div><span>Monthly rent</span><strong>${fmtMoney(d.room.monthlyRent)}</strong><small>Your fixed monthly rental</small></div><div><span>Rent outstanding</span><strong class="${rentDue ? 'is-due' : ''}">${fmtMoney(rentDue)}</strong><small>${rentDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Electricity outstanding</span><strong class="${elecDue ? 'is-due' : ''}">${fmtMoney(elecDue)}</strong><small>${elecDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Gas outstanding</span><strong class="${gasDue ? 'is-due' : ''}">${fmtMoney(gasDue)}</strong><small>${gasDue ? 'Payment pending' : 'All caught up'}</small></div></section>${payAll}${window.RL_EXT ? RL_EXT.tenantHomeExtras(d) : ''}<section class="tenant-bills">${table('Rent history', d.rent, 'rent')}${table('Electricity bills', d.electricity, 'electricity')}${table('Gas bills', gasEntries, 'gas')}</section><input type="file" data-receipt-file accept="image/jpeg,image/png,image/webp,application/pdf" hidden></main></div>`;
 }
 
 // ---------- online payments (Razorpay Checkout) ----------
@@ -706,7 +709,7 @@ function passwordCard() {
 }
 function renderTenantProfile() {
   const p = cache.tenantProfile;
-  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user">${window.RL_I18N ? RL_I18N.picker() : ''}<button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main">${window.RL_EXT ? RL_EXT.tenantNav() : ''}<p class="kicker">ACCOUNT</p><h1>My profile</h1><p class="tenant-address">Your account, tenancy and security settings.</p><section class="profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Tenant'], ['Member since', esc(displayDate(p.account.createdAt))]])}${profileCard('Your tenancy', [['Building', esc(p.home.buildingName)], ['Address', esc(p.home.buildingAddress || 'Not provided')], ['Room', esc(`${p.home.roomLabel} · Floor ${p.home.floorNumber}`)], ['Monthly rent', fmtMoney(p.home.monthlyRent)], ['Security deposit', fmtMoney(p.tenant.deposit)], ['Move-in date', esc(displayDate(p.tenant.moveInDate))]])}${profileCard('Contact & identity', [['Mobile number', esc(p.tenant.mobile || 'Not provided')], ['Alternative mobile', esc(p.tenant.altMobile || 'Not provided')], ['Email', esc(p.tenant.email || 'Not provided')], ['ID proof type', esc(p.tenant.idProofType || 'Not provided')]])}${window.RL_EXT ? RL_EXT.tenantProfileExtras(p) : ''}${passwordCard()}${themePicker()}</section></main></div>`;
+  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user">${window.RL_I18N ? RL_I18N.picker() : ''}${window.RL_EXT?.tenantBell ? RL_EXT.tenantBell() : ''}<button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main">${window.RL_EXT ? RL_EXT.tenantNav() : ''}<p class="kicker">ACCOUNT</p><h1>My profile</h1><p class="tenant-address">Your account, tenancy and security settings.</p><section class="profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Tenant'], ['Member since', esc(displayDate(p.account.createdAt))]])}${profileCard('Your tenancy', [['Building', esc(p.home.buildingName)], ['Address', esc(p.home.buildingAddress || 'Not provided')], ['Room', esc(`${p.home.roomLabel} · Floor ${p.home.floorNumber}`)], ['Monthly rent', fmtMoney(p.home.monthlyRent)], ['Security deposit', fmtMoney(p.tenant.deposit)], ['Move-in date', esc(displayDate(p.tenant.moveInDate))]])}${profileCard('Contact & identity', [['Mobile number', esc(p.tenant.mobile || 'Not provided')], ['Alternative mobile', esc(p.tenant.altMobile || 'Not provided')], ['Email', esc(p.tenant.email || 'Not provided')], ['ID proof type', esc(p.tenant.idProofType || 'Not provided')]])}${window.RL_EXT ? RL_EXT.tenantProfileExtras(p) : ''}${passwordCard()}${themePicker()}</section><button class="btn secondary tenant-signout" data-logout>Sign out</button></main></div>`;
 }
 
 async function logout() {
