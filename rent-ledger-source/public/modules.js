@@ -660,7 +660,19 @@
   X.afterRender = () => {
     const log = document.getElementById('chat-log'); if (log) log.scrollTop = log.scrollHeight;
     compactButtons(document.getElementById('app'));
+    keepActiveInView();
   };
+  // When the sidebar has to scroll, keep the section or room you're on in view.
+  // (Only the sidebar's own scroll position changes, never the page's.)
+  function keepActiveInView() {
+    const box = document.querySelector('.sidebar-scroll');
+    if (!box || box.scrollHeight <= box.clientHeight) return;
+    const active = box.querySelector('.room-row.active') || box.querySelector('.side-link.active') || box.querySelector('.building-row.active');
+    if (!active) return;
+    const b = box.getBoundingClientRect(); const a = active.getBoundingClientRect();
+    if (a.top < b.top) box.scrollTop -= b.top - a.top + 8;
+    else if (a.bottom > b.bottom) box.scrollTop += a.bottom - b.bottom + 8;
+  }
 
   // ---------- fewer buttons on screen ----------
   function buttonsOnly(box) { const kids = [...box.children]; return kids.length && kids.every((el) => el.tagName === 'BUTTON') ? kids : null; }
