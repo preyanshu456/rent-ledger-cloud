@@ -72,6 +72,7 @@ const DEFAULT_SETTINGS = {
   },
   retention: { anonymizeFormerTenantsAfterDays: 0 }, // 0 = keep until removed by hand
   receipts: { footer: "" },
+  bills: { paymentDetails: "" },    // printed on bill PDFs (UPI ID, bank account, cash timings…)
   // The AI model is off until the owner turns it on (and a key is configured).
   assistant: { aiEnabled: false },
 };
@@ -82,6 +83,7 @@ function mergeSettings(stored) {
     reminders: { ...DEFAULT_SETTINGS.reminders, ...(s.reminders || {}) },
     retention: { ...DEFAULT_SETTINGS.retention, ...(s.retention || {}) },
     receipts: { ...DEFAULT_SETTINGS.receipts, ...(s.receipts || {}) },
+    bills: { ...DEFAULT_SETTINGS.bills, ...(s.bills || {}) },
     assistant: { ...DEFAULT_SETTINGS.assistant, ...(s.assistant || {}) },
   };
 }
