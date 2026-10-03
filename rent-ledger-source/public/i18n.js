@@ -104,6 +104,7 @@
     'Preview mode:': 'पूर्वावलोकन मोड:', 'only in-app messages are really delivered.': 'केवल ऐप के अंदर के संदेश ही सच में पहुँचते हैं।',
     'Live:': 'चालू:', 'approved messages are sent.': 'मंज़ूर किए गए संदेश भेजे जाते हैं।',
     'Basic mode:': 'बेसिक मोड:', 'answers come from built-in rules.': 'जवाब पहले से तय नियमों से आते हैं।',
+    'No buildings yet.': 'अभी कोई इमारत नहीं।',
     'You can turn on AI in Settings.': 'आप सेटिंग्स में AI चालू कर सकते हैं।', 'The owner can turn on AI in Settings.': 'मालिक सेटिंग्स में AI चालू कर सकते हैं।',
   };
 
