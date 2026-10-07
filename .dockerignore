@@ -7,3 +7,5 @@
 **/data/
 **/test/
 **/.DS_Store
+**/android
+**/ios
