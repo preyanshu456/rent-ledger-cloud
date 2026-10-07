@@ -1,5 +1,12 @@
 # Changelog
 
+## Bills as PDF (October 2026)
+- **Finance → Make bills:** pick a property, a floor or a room, and what to include (rent, electricity, gas, other charges). The list shows what each room still owes; tick the bills you want and download one PDF, or a single room's bill with its own **PDF** button. On phones that support it, **Share** sends the PDF straight to WhatsApp or email.
+- Each bill is one A4 page (more if the list is long): who it is from, the tenant and room, every unpaid charge with its period and due date, electricity meter readings and units, what is already paid, any advance the tenant has paid, and the amount to pay. Overdue bills say so.
+- **How to pay** (UPI ID, bank account, cash timings) is set once, on the Make bills page or in Settings, and printed on every bill.
+- Tenants who moved out are left out unless you tick them in. Bills only read the ledger; making one changes nothing, and each PDF made is noted in the audit log.
+- Hindi labels for the new screens. Tab underlines now fit Hindi labels.
+
 ## Simpler layout (October 2026)
 - Sidebar: five main buttons (Dashboard, Bills & payments, Reminders, Repairs, Settings), with the rest under **More**. Notifications are a bell next to the name. Profile and Sign out share one row. Theme and language moved to **Settings**.
 - Dashboard: four headline numbers (rooms occupied, collected this month, still to collect, overdue). The rent / electricity / gas split is under **Show details**.
