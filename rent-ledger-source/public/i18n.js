@@ -105,6 +105,8 @@
     'Live:': 'चालू:', 'approved messages are sent.': 'मंज़ूर किए गए संदेश भेजे जाते हैं।',
     'Basic mode:': 'बेसिक मोड:', 'answers come from built-in rules.': 'जवाब पहले से तय नियमों से आते हैं।',
     'No buildings yet.': 'अभी कोई इमारत नहीं।',
+    // finance: make bills
+    'Make bills': 'बिल बनाएँ', 'Bills for what each room still owes': 'हर कमरे के बकाया का बिल', 'Floor': 'मंज़िल', 'All floors': 'सभी मंज़िलें', 'All rooms': 'सभी कमरे', 'Ground floor': 'भूतल', 'Include': 'शामिल करें', 'Other': 'अन्य', 'Tenants who moved out': 'जा चुके किरायेदार', 'bills selected': 'बिल चुने गए', 'to collect': 'वसूलना है', 'Download PDF': 'PDF डाउनलोड करें', 'PDF': 'PDF', 'Share': 'शेयर करें', 'To pay': 'देना है', 'after advance': 'अग्रिम घटाकर', 'No tenant': 'कोई किरायेदार नहीं', 'Owner’s floor': 'मालिक की मंज़िल', '(moved out)': '(जा चुके)', 'Nothing is pending for this choice.': 'इस चुनाव के लिए कुछ भी बकाया नहीं है।', 'Not included: tenants who moved out owe': 'शामिल नहीं: जा चुके किरायेदारों का बकाया', 'How to pay (printed on every bill)': 'भुगतान कैसे करें (हर बिल पर छपेगा)', 'How to pay (printed on bills)': 'भुगतान कैसे करें (बिलों पर छपेगा)', 'Not added yet. Add your UPI ID or bank details so tenants know how to pay.': 'अभी जोड़ा नहीं गया। अपनी UPI ID या बैंक विवरण जोड़ें ताकि किरायेदार जान सकें कि भुगतान कैसे करें।', 'Choose at least one type.': 'कम से कम एक प्रकार चुनें।', 'Tick at least one bill.': 'कम से कम एक बिल चुनें।', 'Saved. It will be printed on every bill.': 'सहेजा गया। यह हर बिल पर छपेगा।',
     'You can turn on AI in Settings.': 'आप सेटिंग्स में AI चालू कर सकते हैं।', 'The owner can turn on AI in Settings.': 'मालिक सेटिंग्स में AI चालू कर सकते हैं।',
   };
 

@@ -452,6 +452,8 @@ function paint(html, { pageChanged, tabChanged, after, sideHtml, mainHtml, extra
       app.querySelectorAll(".stat-card .stat-value, .tenant-hero strong, .pay-all-card strong").forEach(countUp);
     }
     if (tabChanged && animate) app.querySelector(".tab-panel")?.classList.add("tab-enter");
+    // Translate now (not after this frame) so the tab underline fits the Hindi labels.
+    if (window.RL_I18N?.lang === "hi") app.querySelectorAll(".tab-row").forEach((row) => RL_I18N.translate(row));
     placeTabIndicator(app, tabChanged && animate);
 
     // Keyboard access for the clickable rows and cards that aren't real buttons.

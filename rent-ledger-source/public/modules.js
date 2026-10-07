@@ -10,7 +10,7 @@
   const X = (window.RL_EXT = { views: {}, loaders: {}, actions: {}, submits: {}, changes: {}, tenantViews: {}, tenantLoaders: {} });
   const d = (X.d = {});            // loaded data per view
   const s = (X.s = {               // per-view UI state (filters, tabs)
-    finance: { from: '', to: '' },
+    finance: { from: '', to: '', tab: 'overview', bill: { buildingId: '', floor: '', roomId: '', kinds: ['rent', 'electricity'], former: false }, skip: {} },
     ledger: { tab: 'bills', status: 'open', kind: '', buildingId: '', tenantId: '' },
     recon: { status: 'unmatched', open: {} },
     leases: { status: '', prefill: null, extract: null },
@@ -72,7 +72,10 @@
     const res = await fetch(apiUrl(url), { headers: { Authorization: `Bearer ${session?.token || ''}` } });
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Download failed'); }
     const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '')?.[1] || fallbackName;
-    const link = URL.createObjectURL(await res.blob());
+    saveBlob(await res.blob(), name);
+  }
+  function saveBlob(blob, name) {
+    const link = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = link; a.download = name; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(link), 60_000);
@@ -214,19 +217,21 @@
 
   // ---------- finance overview ----------
   X.loaders.finance = async () => {
+    if (s.finance.tab === 'bills') return loadBills();
     const from = s.finance.from || addMonths(ym(), -5);
     const to = s.finance.to || ym();
     [d.finance, d.balances] = await Promise.all([api('GET', `/api/finance/summary${qs({ from, to })}`), api('GET', '/api/ledger/balances')]);
   };
   X.views.finance = () => {
+    if (s.finance.tab === 'bills') return billsView();
     const f = d.finance;
-    if (!f) return page('Finance', 'Loading…');
+    if (!f) return page('Finance', 'Loading…') + financeTabs();
     const t = f.totals;
     const maxBar = Math.max(1, ...f.trend.map((m) => Math.max(m.billed, m.received)));
     const bar = (v, cls) => `<span class="bar ${cls}" style="width:${Math.round((v / maxBar) * 100)}%"></span>`;
     const trendRows = f.trend.map((m) => [h(m.month), money(m.billed), money(m.collected), money(m.received), money(m.expenses), `<div class="bars">${bar(m.billed, 'billed')}${bar(m.received, 'received')}</div>`]);
     const balances = (d.balances || []).filter((b) => b.outstanding || b.credit);
-    return `${page('Finance', `${h(f.range.from)} to ${h(f.range.to)} · amounts from the ledger`)}
+    return `${page('Finance', `${h(f.range.from)} to ${h(f.range.to)} · amounts from the ledger`)}${financeTabs()}
       <form class="card filter-bar" data-submit="finance-range"><div class="form-grid cols-3">${field('From', `<input type="month" name="from" value="${h(f.range.from)}">`)}${field('To', `<input type="month" name="to" value="${h(f.range.to)}">`)}<div class="form-actions"><button class="btn" type="submit">Apply</button></div></div></form>
       <div class="stat-grid">
         <div class="stat-card"><div class="stat-label">Billed</div><div class="stat-value">${money(t.billed)}</div></div>
@@ -249,6 +254,142 @@
   };
   X.submits['finance-range'] = (data) => { s.finance.from = data.from; s.finance.to = data.to; };
   X.actions['ledger-tenant'] = (el) => { s.ledger.tenantId = el.dataset.id; s.ledger.status = ''; state.view = 'ledger'; state.forms = {}; };
+
+  // ---------- bills (PDF) for what is still pending ----------
+  // Pick a property, floor or room and the types (rent, electricity…), tick
+  // the bills you want, then download one PDF or share it from the phone.
+  const financeTabs = () => `<div class="tab-row">${[['overview', 'Overview'], ['bills', 'Make bills']].map(([k, t]) => `<button class="tab-btn ${s.finance.tab === k ? 'active' : ''}" data-action="set-state" data-key="finance.tab" data-value="${k}">${t}</button>`).join('')}</div>`;
+  const floorName = (n) => (Number(n) === 0 ? 'Ground floor' : `Floor ${n}`);
+  const BILL_TYPES = [['rent', 'Rent'], ['electricity', 'Electricity'], ['gas', 'Gas'], ['other', 'Other charges']];
+  const canShareFiles = (() => { try { return Boolean(navigator.canShare && navigator.canShare({ files: [new File(['%PDF'], 'bill.pdf', { type: 'application/pdf' })] })); } catch { return false; } })();
+  async function loadBills() {
+    const b = s.finance.bill;
+    [d.bills, d.org] = await Promise.all([
+      api('GET', `/api/bills/preview${qs({ buildingId: b.buildingId, floor: b.floor, roomId: b.roomId, kinds: b.kinds.join(','), includeFormer: b.former ? '1' : '' })}`),
+      api('GET', '/api/org').catch(() => d.org || null),
+    ]);
+  }
+  function pickSummary() {
+    const bills = d.bills?.bills || [];
+    const chosen = bills.filter((x) => !s.finance.skip[x.key]);
+    return { n: chosen.length, of: bills.length, total: Math.round(chosen.reduce((t, x) => t + x.payable, 0) * 100) / 100, keys: chosen.map((x) => x.key) };
+  }
+  function updateBillBar() {
+    const p = pickSummary();
+    document.querySelectorAll('[data-bill-n]').forEach((el) => { el.textContent = p.n; });
+    document.querySelectorAll('[data-bill-total]').forEach((el) => { el.textContent = money(p.total); });
+    const all = document.querySelector('[data-bill-all]');
+    if (all) { all.checked = p.n === p.of; all.indeterminate = p.n > 0 && p.n < p.of; }
+    document.querySelectorAll('[data-bill-main]').forEach((btn) => { btn.disabled = !p.n; });
+  }
+  // Ticking bills only updates the count and total, without redrawing the page.
+  document.addEventListener('change', (e) => {
+    const pick = e.target.closest?.('[data-bill-pick]');
+    const all = e.target.closest?.('[data-bill-all]');
+    if (!pick && !all) return;
+    if (all) {
+      (d.bills?.bills || []).forEach((x) => { if (all.checked) delete s.finance.skip[x.key]; else s.finance.skip[x.key] = true; });
+      document.querySelectorAll('[data-bill-pick]').forEach((c) => { c.checked = all.checked; });
+    } else if (pick.checked) delete s.finance.skip[pick.dataset.billPick];
+    else s.finance.skip[pick.dataset.billPick] = true;
+    updateBillBar();
+  });
+
+  function billsView() {
+    const b = s.finance.bill;
+    const rooms = cache.rooms.filter((r) => !b.buildingId || r.buildingId === b.buildingId);
+    const floors = [...new Set(rooms.map((r) => r.floorNumber))].sort((x, y) => x - y);
+    const roomList = rooms.filter((r) => b.floor === '' || String(r.floorNumber) === String(b.floor));
+    const manyBuildings = !b.buildingId && cache.buildings.length > 1;
+    const filters = `<div class="card filter-bar bill-filters"><div class="form-grid cols-3">
+        ${field('Property', `<select name="buildingId" data-ext-change="bill-filter">${buildingOptions(b.buildingId)}</select>`)}
+        ${field('Floor', `<select name="floor" data-ext-change="bill-filter"><option value="">All floors</option>${floors.map((f) => opt(f, floorName(f), b.floor)).join('')}</select>`)}
+        ${field('Room', `<select name="roomId" data-ext-change="bill-filter"><option value="">All rooms</option>${roomList.map((r) => opt(r.id, `${r.label}${manyBuildings ? ` · ${cache.buildings.find((x) => x.id === r.buildingId)?.name || ''}` : ''}`, b.roomId)).join('')}</select>`)}
+      </div>
+      <div class="bill-kinds" role="group" aria-label="What to include"><span class="bill-kinds-label">Include</span>${BILL_TYPES.map(([k, t]) => `<label class="bill-kind"><input type="checkbox" value="${k}" data-ext-change="bill-kind" ${b.kinds.includes(k) ? 'checked' : ''}><span>${t}</span></label>`).join('')}<label class="check bill-former"><input type="checkbox" data-ext-change="bill-former" ${b.former ? 'checked' : ''}> <span>Tenants who moved out</span></label></div></div>`;
+    const head = page('Finance', 'Bills for what each room still owes');
+    const data = d.bills;
+    if (!data) return `${head}${financeTabs()}${filters}`;
+    const bills = data.bills;
+    const show = Object.fromEntries(BILL_TYPES.map(([k]) => [k, b.kinds.includes(k)]));
+    const spread = new Set(bills.map((x) => x.buildingId)).size > 1;
+    const cols = ['Room', 'Tenant', ...BILL_TYPES.filter(([k]) => show[k]).map(([k, t]) => (k === 'other' ? 'Other' : t)), 'To pay', ''];
+    const amt = (v) => (v ? money(v) : '–');
+    const rows = bills.map((x) => [
+      `<label class="bill-pick"><input type="checkbox" data-bill-pick="${h(x.key)}" ${s.finance.skip[x.key] ? '' : 'checked'} aria-label="${h(`${x.roomLabel} ${x.tenantName}`)}"><span><b>${h(x.roomLabel)}</b><small>${h(x.floorName)}${spread ? ` · ${h(x.buildingName)}` : ''}</small></span></label>`,
+      x.tenantName ? `${h(x.tenantName)}${x.tenantActive ? '' : ' <small class="muted">(moved out)</small>'}` : `<span class="muted">${x.roomStatus === 'owner' ? 'Owner’s floor' : 'No tenant'}</span>`,
+      ...BILL_TYPES.filter(([k]) => show[k]).map(([k]) => amt(x[k])),
+      `<span class="bill-topay"><b class="${x.overdue ? 'is-due' : ''}">${money(x.payable)}</b>${x.credit ? `<small class="bill-sub"><span>after advance</span> ${money(x.credit)}</small>` : ''}</span>`,
+      `<div class="bill-actions"><button class="btn small secondary" data-action="bills-pdf" data-key="${h(x.key)}">PDF</button>${canShareFiles ? `<button class="btn small secondary" data-action="bills-share" data-key="${h(x.key)}">Share</button>` : ''}</div>`,
+    ]);
+    const p = pickSummary();
+    const bar = bills.length ? `<div class="bills-bar">
+        <label class="check bill-all"><input type="checkbox" data-bill-all ${p.n === p.of ? 'checked' : ''}> <span><b data-bill-n>${p.n}</b> / ${p.of}</span> <span>bills selected</span></label>
+        <span class="bills-total"><b data-bill-total>${money(p.total)}</b> <span>to collect</span></span>
+        <div class="bills-actions"><button class="btn" data-action="bills-pdf" data-bill-main ${p.n ? '' : 'disabled'}>Download PDF</button>${canShareFiles ? `<button class="btn secondary" data-action="bills-share" data-bill-main ${p.n ? '' : 'disabled'}>Share</button>` : ''}</div>
+      </div>` : '';
+    const former = data.former.count && !b.former ? `<p class="bill-note"><span>Not included: tenants who moved out owe</span> <b>${money(data.former.pending)}</b></p>` : '';
+    const pd = d.org?.settings?.bills?.paymentDetails || '';
+    const payCard = `<div class="card bill-pay">${state.forms['bills-pay'] && isOwner()
+      ? `<form data-submit="bills-paydetails"><label class="bill-pay-title" for="bill-pd">How to pay (printed on every bill)</label><textarea id="bill-pd" name="paymentDetails" rows="4" maxlength="600" placeholder="UPI: yourname@upi&#10;Bank: name, account number, IFSC&#10;Cash: at the office, 10am to 6pm">${h(pd)}</textarea><div class="form-actions"><button class="btn" type="submit">Save</button><button class="btn secondary" type="button" data-toggle-form="bills-pay">Cancel</button></div></form>`
+      : `<div class="bill-pay-row"><div><div class="bill-pay-title">How to pay (printed on every bill)</div>${pd ? `<div class="bill-pay-text" data-no-i18n>${h(pd)}</div>` : '<div class="bill-pay-text muted">Not added yet. Add your UPI ID or bank details so tenants know how to pay.</div>'}</div>${isOwner() ? `<button class="btn small secondary" data-toggle-form="bills-pay">${pd ? 'Edit' : 'Add'}</button>` : ''}</div>`}</div>`;
+    return `${head}${financeTabs()}${filters}
+      <div class="card bills-card">${bar}${table(cols, rows, { emptyText: 'Nothing is pending for this choice.' })}${former}</div>
+      ${payCard}`;
+  }
+  X.changes['bill-filter'] = (el) => {
+    const b = s.finance.bill;
+    b[el.name] = el.value;
+    if (el.name === 'buildingId') { b.floor = ''; b.roomId = ''; }
+    if (el.name === 'floor') b.roomId = '';
+    s.finance.skip = {};
+  };
+  X.changes['bill-kind'] = (el) => {
+    const b = s.finance.bill;
+    const chosen = new Set(b.kinds);
+    if (el.checked) chosen.add(el.value); else chosen.delete(el.value);
+    if (!chosen.size) { toast('Choose at least one type.', true); return; }
+    b.kinds = BILL_TYPES.map(([k]) => k).filter((k) => chosen.has(k));
+    s.finance.skip = {};
+  };
+  X.changes['bill-former'] = (el) => { s.finance.bill.former = el.checked; s.finance.skip = {}; };
+
+  function billRequest(key) {
+    const b = s.finance.bill;
+    const body = { buildingId: b.buildingId, floor: b.floor, roomId: b.roomId, kinds: b.kinds, includeFormer: b.former };
+    if (key) body.keys = [key];
+    else {
+      const p = pickSummary();
+      if (!p.n) throw new Error('Tick at least one bill.');
+      if (p.n < p.of) body.keys = p.keys;
+    }
+    return body;
+  }
+  async function fetchBillsPdf(body) {
+    const res = await fetch(apiUrl('/api/bills/pdf'), { method: 'POST', headers: { Authorization: `Bearer ${session?.token || ''}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Could not make the PDF.'); }
+    const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '')?.[1] || 'bills.pdf';
+    return { blob: await res.blob(), name };
+  }
+  X.actions['bills-pdf'] = async (el) => {
+    const { blob, name } = await fetchBillsPdf(billRequest(el.dataset.key));
+    saveBlob(blob, name);
+    return false;
+  };
+  X.actions['bills-share'] = async (el) => {
+    const { blob, name } = await fetchBillsPdf(billRequest(el.dataset.key));
+    try {
+      await navigator.share({ files: [new File([blob], name, { type: 'application/pdf' })], title: name.replace(/\.pdf$/, '') });
+    } catch (err) {
+      if (err?.name !== 'AbortError') saveBlob(blob, name); // sharing not allowed here: download instead
+    }
+    return false;
+  };
+  X.submits['bills-paydetails'] = async (data) => {
+    await api('PUT', '/api/org', { settings: { bills: { paymentDetails: data.paymentDetails || '' } } });
+    state.forms['bills-pay'] = false;
+    toast('Saved. It will be printed on every bill.');
+  };
 
   // ---------- ledger ----------
   const KINDS = { rent: 'Rent', electricity: 'Electricity', gas: 'Gas', maintenance: 'Maintenance', late_fee: 'Late fee', damage: 'Damage', other: 'Other' };
@@ -719,6 +860,7 @@
     document.body.classList.remove('sheet-open');
     labelTables(document.getElementById('app'));
     fitTables();
+    if (state.view === 'finance' && s.finance.tab === 'bills') updateBillBar();
   };
 
   // ---------- phones: tables that don't fit become cards ----------
@@ -907,6 +1049,7 @@
           ${field('Default language for tenants', `<select name="defaultLanguage" ${dis}>${opt('en', 'English', o.defaultLanguage)}${opt('hi', 'हिन्दी (Hindi)', o.defaultLanguage)}</select>`)}
           ${field('Receipt footer', `<input name="footer" maxlength="300" value="${h(o.settings.receipts?.footer || '')}" ${dis} placeholder="e.g. Thank you!">`, 'span 2')}
           ${field('Anonymise former tenants after (days, 0 = never)', `<input type="number" name="retentionDays" min="0" max="3650" value="${o.settings.retention?.anonymizeFormerTenantsAfterDays ?? 0}" ${dis}>`)}
+          ${field('How to pay (printed on bills)', `<textarea name="paymentDetails" rows="3" maxlength="600" ${dis} placeholder="UPI: yourname@upi&#10;Bank: name, account number, IFSC">${h(o.settings.bills?.paymentDetails || '')}</textarea>`, '1 / -1')}
         </div>
         <fieldset class="ai-setting"><legend>Rent Ledger AI</legend>
           <label class="check"><input type="checkbox" name="aiEnabled" ${o.settings.assistant?.aiEnabled ? 'checked' : ''} ${dis || (ai && !ai.ai.configured ? 'disabled' : '')}> Use the AI model for the assistant</label>
@@ -929,7 +1072,7 @@
     return `${page('Settings', '')}<div class="tab-row">${tabs.map(([k, t]) => `<button class="tab-btn ${tab === k ? 'active' : ''}" data-action="set-state" data-key="settings.tab" data-value="${k}">${t}</button>`).join('')}</div>${body}`;
   };
   X.submits['org-save'] = async (data) => {
-    const body = { name: data.name, timeZone: data.timeZone, defaultLanguage: data.defaultLanguage, settings: { receipts: { footer: data.footer }, retention: { anonymizeFormerTenantsAfterDays: Number(data.retentionDays) || 0 }, assistant: { aiEnabled: data.aiEnabled === 'on' } } };
+    const body = { name: data.name, timeZone: data.timeZone, defaultLanguage: data.defaultLanguage, settings: { receipts: { footer: data.footer }, bills: { paymentDetails: data.paymentDetails || '' }, retention: { anonymizeFormerTenantsAfterDays: Number(data.retentionDays) || 0 }, assistant: { aiEnabled: data.aiEnabled === 'on' } } };
     if (data.aiEnabled === 'on' && !d.org.settings.assistant?.aiEnabled && !(await confirmDialog('Questions and the figures the assistant looks up will be sent to the AI provider configured on your server.', { title: 'Turn on AI?', confirmLabel: 'Turn on' }))) return false;
     await api('PUT', '/api/org', body); toast('Settings saved');
   };
