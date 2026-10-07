@@ -1693,3 +1693,86 @@ html { scrollbar-color: rgba(var(--c8), .32) transparent; }
   table.as-cards .bill-pick { padding-right: 0; }
   .bill-pay-row { flex-direction: column; }
 }
+
+/* =====================================================================
+   Phones (Android & iPhone): speed and touch.
+   Live blur behind every card is the most expensive effect a phone can
+   draw; it made scrolling and the More panel stutter. On phones the cards
+   use solid frosted colours instead, which look almost the same.
+   ===================================================================== */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+button, a, [data-nav], [data-action], label, summary, select, input, textarea { touch-action: manipulation; }
+@media (max-width: 860px), (hover: none) {
+  /* :not(#rl-x) gives this rule enough weight to beat every per-component blur */
+  *:not(#rl-x), *:not(#rl-x)::before, *:not(#rl-x)::after { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+  * { -webkit-tap-highlight-color: transparent; }
+  .card, .stat-card, .building-card, .room-card, .profile-card {
+    background: rgba(255,255,255,.84) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 6px 18px rgba(var(--g-deep), .08) !important;
+    transition: none !important;
+  }
+  .card::after, .stat-card::after, .building-card::after, .room-card::after, .profile-card::after { display: none !important; }
+  .card::before, .stat-card::before, .building-card::before, .room-card::before, .profile-card::before { display: none !important; }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea { background: rgba(255,255,255,.9) !important; box-shadow: inset 0 1px 2px rgba(var(--g-deep), .08) !important; border-color: rgba(var(--c8), .16) !important; }
+  .sidebar { background: linear-gradient(165deg, rgb(var(--g-deep)), rgb(var(--g-primary))) !important; }
+  .mnav { background: linear-gradient(165deg, rgba(var(--g-deep), .97), rgba(var(--g-primary), .95)) !important; }
+  .msheet-backdrop { background: rgba(var(--g-ink), .45) !important; }
+  .confirm-backdrop { background: rgba(var(--g-ink), .5) !important; }
+  .auth-card { background: rgba(255,255,255,.9) !important; }
+  .tenant-top { background: rgba(255,255,255,.92) !important; }
+  .stamp { background: rgba(255,255,255,.85) !important; }
+  .sc-grain, .sc-orb { display: none !important; }
+  .sc-cloud { filter: none !important; opacity: .35 !important; }
+  /* Text fields at 16px: smaller text makes iPhones zoom the page on every tap into a field */
+  input, select, textarea { font-size: 16px !important; }
+  /* Top of the screen: content scrolling under the clock and battery gets a solid strip */
+  body::after { content: ""; position: fixed; left: 0; right: 0; top: 0; height: env(safe-area-inset-top); background: rgb(var(--g-deep)); z-index: 95; pointer-events: none; }
+  .sidebar { margin-top: calc(10px + env(safe-area-inset-top)) !important; }
+  .tenant-top { padding-top: env(safe-area-inset-top); height: calc(72px + env(safe-area-inset-top)); }
+  /* Pressed state, since phones have no hover */
+  .btn:active, .mnav-btn:active, .msheet-grid button:active, .msheet-row:active, .tab-btn:active { opacity: .7; }
+  /* Sign-in: a short header so the form is on screen without scrolling */
+  .auth-art { min-height: 0 !important; padding: calc(18px + env(safe-area-inset-top)) 20px 18px !important; }
+  .auth-art::before, .auth-art::after { display: none; }
+  .auth-copy { margin-top: 10px !important; }
+  .auth-copy h1 { font-size: 24px !important; line-height: 1.2 !important; margin: 0 !important; letter-spacing: -.3px !important; }
+  .auth-copy > p:not(.kicker), .auth-pills, .auth-copy .kicker { display: none !important; }
+  .auth-panel { padding: 14px 12px 28px !important; place-items: start center !important; }
+  .auth-card { padding: 20px 16px !important; }
+  .role-switch { margin-bottom: 18px !important; }
+  .auth-card h2 { font-size: 24px !important; }
+  .auth-muted { margin-bottom: 14px !important; }
+}
+/* While a tap is being answered */
+.mnav-btn.active, .msheet-grid button.active { transition: none; }
+@media (max-width: 600px) {
+  table.as-cards > tbody > tr > td.cell-empty { display: none !important; }
+}
+/* Building page: floor tools sit below the rooms and stay closed until needed */
+.floor-manager-open { width: 100%; justify-content: center; margin-top: 4px; }
+.floor-delete { justify-self: end; align-self: center; border: 0; background: none; padding: 10px 4px; color: var(--due-red); font: 600 13px var(--font-body); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+@media (max-width: 860px) {
+  .floor-control { display: grid !important; grid-template-columns: 1fr; gap: 10px; padding: 14px 0; border-top: 1px solid rgba(var(--c8), .1); }
+  .floor-control form { display: flex; gap: 8px; }
+  .floor-control form input { flex: 1; min-width: 0; }
+  .floor-delete { margin-top: 4px; }
+}
+.gas-todo-closed { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 18px !important; border: 0; text-align: left; font: 500 14px var(--font-body); color: inherit; cursor: pointer; }
+.gas-todo-count { min-width: 26px; padding: 2px 9px; border-radius: 99px; background: rgb(var(--g-primary)); color: #fff; font: 600 12px/20px var(--font-mono); text-align: center; }
+.tpl-example-label { margin: 0 0 4px; font: 600 10px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; opacity: .55; }
+.tpl-example { line-height: 1.6; }
+mark.tpl-fill { background: rgba(var(--g-mid), .18); color: inherit; padding: 0 2px; border-radius: 4px; }
+/* Finance on phones: month by month stays a short table (month, billed, collected) */
+@media (max-width: 600px) {
+  table.month-table th:nth-child(n+4), table.month-table td:nth-child(n+4) { display: none; }
+  table.month-table { min-width: 0 !important; }
+}
+/* Android / iPhone app: receipts and statements open on a full-screen sheet */
+.doc-viewer { position: fixed; inset: 0; z-index: 200; display: flex; flex-direction: column; background: #fff; padding-top: env(safe-area-inset-top); }
+.doc-viewer-bar { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid rgba(var(--c8), .12); }
+.doc-viewer iframe { flex: 1; width: 100%; border: 0; background: #fff; padding-bottom: env(safe-area-inset-bottom); }
+/* Phones: tab rows fit the screen width instead of being cut off */
+@media (max-width: 600px) {
+  .tab-row { width: 100%; justify-content: space-between; }
+  .tab-row .tab-btn { flex: 1 1 auto; padding: 9px 8px !important; font-size: 10.5px !important; letter-spacing: .05em !important; }
+}
