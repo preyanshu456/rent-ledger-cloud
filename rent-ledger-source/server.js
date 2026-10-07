@@ -61,7 +61,10 @@ function createServer({ dataDir = config.dataDir } = {}) {
 
   app.use(requestContext());
   app.use(securityHeaders({ cspEnforce: config.cspEnforce }));
-  app.use(cors(config.corsOrigins));
+  // The Android and iPhone apps load their screens from inside the app
+  // (capacitor://localhost on iPhone, https://localhost on Android) and call
+  // this server. They sign in with a token, never a cookie.
+  app.use(cors([...config.corsOrigins, ...NATIVE_APP_ORIGINS]));
   app.use((req, res, next) => (req.method !== "GET" && LARGE_BODY_PATHS.some((r) => r.test(req.path)) ? next() : jsonSmall(req, res, next)));
 
   // Health check for Railway: the database answers and the data folder is writable.
@@ -115,6 +118,7 @@ function createServer({ dataDir = config.dataDir } = {}) {
 }
 
 // Modules added stage by stage; each registers its own routes.
+const NATIVE_APP_ORIGINS = ["capacitor://localhost", "https://localhost", "http://localhost"];
 const OPTIONAL_MODULES = ["ledger", "leases", "reconciliation", "documents", "notifications", "maintenance", "expenses", "finance", "insights", "tenancy", "assistant"]
   .filter((name) => fs.existsSync(path.join(__dirname, "routes", `${name}.js`)));
 
