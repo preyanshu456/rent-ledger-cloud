@@ -48,6 +48,7 @@ function register(app, { db, todayFor, log }) {
       settings.retention = { anonymizeFormerTenantsAfterDays: Number.isInteger(days) && days >= 0 && days <= 3650 ? days : settings.retention.anonymizeFormerTenantsAfterDays };
     }
     if (body.settings?.receipts) settings.receipts = { footer: v.text({ label: "Receipt footer", max: 300 })(body.settings.receipts.footer) };
+    if (body.settings?.bills) settings.bills = { paymentDetails: v.text({ label: "Payment details", max: 600 })(body.settings.bills.paymentDetails) };
     if (body.settings?.assistant) settings.assistant = { aiEnabled: body.settings.assistant.aiEnabled === true };
     db.run("UPDATE organizations SET name = ?, default_language = ?, time_zone = ?, settings_json = ? WHERE id = ?", name, language, timeZone, JSON.stringify(settings), req.orgId);
     audit(db, ctxOf(req), "org.updated", "organization", req.orgId, { fields: Object.keys(body) });
