@@ -34,7 +34,13 @@ function cashflow(db, orgId, today) {
   const overduePaise = outstanding.filter((c) => c.due_date && c.due_date < today).reduce((a, c) => a + c.outstanding_paise, 0);
   const projectedCollectionPaise = avgRate === null ? expectedRentPaise : Math.round(expectedRentPaise * avgRate);
   const projectedNetPaise = projectedCollectionPaise - avgExpensesPaise;
-  const trendDirection = rates.length >= 3 ? (rates.at(-1) < rates[0] - 0.1 ? "falling" : rates.at(-1) > rates[0] + 0.1 ? "rising" : "steady") : "not enough history";
+  // Compare the recent half of the months with the earlier half, so one slow
+  // month (often just a late payer) doesn't flip the trend on its own.
+  const avg = (list) => list.reduce((a, b) => a + b, 0) / list.length;
+  const half = Math.floor(rates.length / 2);
+  const earlier = rates.length >= 3 ? avg(rates.slice(0, half)) : null;
+  const recent = rates.length >= 3 ? avg(rates.slice(-half)) : null;
+  const trendDirection = rates.length >= 3 ? (recent < earlier - 0.1 ? "falling" : recent > earlier + 0.1 ? "rising" : "steady") : "not enough history";
   const expiries = finance.summary(db, orgId, {}, today).leaseExpiries.filter((l) => l.daysLeft <= 60);
   return {
     facts: {
