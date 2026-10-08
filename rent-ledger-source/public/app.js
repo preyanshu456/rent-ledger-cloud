@@ -1328,7 +1328,7 @@ function renderRentTab(r, tenant) {
 // reminder of how to switch online payments on.
 function renderOnlinePaymentsCard(d) {
   if (!d.onlinePaymentsEnabled) {
-    return `<div class="card"><h3>Online payments</h3><p class="profile-note">Tenants can't pay online yet. Add <code>RAZORPAY_KEY_ID</code> and <code>RAZORPAY_KEY_SECRET</code> from your Razorpay dashboard to your Railway variables to show a <strong>Pay</strong> button on every pending bill in the tenant portal. Payments settle to the bank account linked to your Razorpay account.</p></div>`;
+    return `<div class="card"><h3>Online payments</h3><p class="profile-note">Tenants can't pay online yet. Connect your own Razorpay account in <strong>Settings → Online payments</strong> to show a <strong>Pay</strong> button on every pending bill. Payments settle straight to the bank account linked to your Razorpay account.</p></div>`;
   }
   const kindLabel = { rent: "Rent", electricity: "Electricity", gas: "Gas" };
   const rows = (cache.payments || []).map((p) => `
