@@ -1,5 +1,27 @@
 # Changelog
 
+## Faster on phones, ready for Android and iPhone apps (October 2026)
+- **Taps answer at once.** The tab you tap lights up immediately and the More panel closes straight away. Pages you have already opened appear instantly and refresh in the background; a new page shows a placeholder while it loads. Each page now waits for one round trip to the server instead of three. (Measured with a slow connection: from about 1.1–1.5 s to 0.07 s for pages seen before and 0.5 s for new ones.)
+- **Smoother scrolling on phones.** The live blur behind every card and panel is replaced on phones with solid frosted colours. Numbers no longer count up from zero.
+- **The app opens from the phone's cache** and updates itself in the background.
+- **Back button:** Android's Back goes to the previous screen (closing the More panel or a pop-up first) instead of leaving the app.
+- **No more zooming or jumping while typing:** text fields are 16px on phones, and the sign-in screen is short enough to fit without scrolling.
+- **Safer building page:** floor rent and *Delete floor* are under *Change floor rent or remove a floor*, below the rooms, with a small delete link instead of a big button.
+- **Amounts** always show whole rupees or two decimals (₹30,442.10, not ₹30,442.1).
+- **Shorter cards on phones:** empty values are left out; payments show "Verified" only when a payment really was verified.
+- **Reminders:** templates read like the real message, with example details highlighted; channel chips say whether a channel is on or off; tabs (Outbox, Prepare, Templates, Settings) fit the screen. Switching tabs no longer reloads everything.
+- **Insights:** the collection trend compares recent months with earlier ones, so one late payer doesn't make it say "falling".
+- **Profile** keeps just your account, password and backup; colours and language stay in Settings.
+- **Finance on phones:** "Month by month" stays a short table (month, billed, collected).
+- **"Rent Ledger" stays readable at the top:** the name is solid white over the moving clouds, and the sign-in header on phones is no longer see-through. On iPhones the top bar used to sit behind the clock and battery (it only showed when you pulled the page down); it now starts below them, on a light strip, for owners and tenants.
+- **Home no longer has the "Gas bills to enter" section.** Gas bills are still entered on each room's Gas tab.
+- **Home shows "Received this month":** the money that actually came in this month, whichever month's bill it paid. (It used to count only payments against this month's bills, so a payment for last month's rent showed ₹0.) The split under *Show details* is labelled "This month's bills".
+- **Tenant home on phones:** the "Total pending" card and the balance row were faded and showed the sunset through them; they are solid now.
+- **The field you are typing in** is outlined in the theme colour instead of orange, so it no longer looks like an error.
+- **Hindi:** about 220 more labels and help texts are translated (Settings, Reports, Insights, Leases, Expenses, Bank matching, the building and room pages, sign-up and password reset), including text with numbers and dates such as "Floor 2" and "Rent Oct 2026".
+- **Bills in Hindi and with ₹:** names, addresses and notes written in Hindi now print correctly on bill PDFs (they used to print as "???"), and amounts show "₹" instead of "Rs.". The PDF carries only the letters it uses from Noto Sans Devanagari (in `rent-ledger-source/fonts`, free licence), so a bill stays small.
+- **Android / iPhone apps:** Capacitor setup for both (`capacitor.config.json`, `npm run android:open` / `ios:open`). The apps connect to the live server by default (no server address to type), the server accepts them, and bills, receipts and statements open the phone's share sheet. See `MOBILE_APPS.md`. Capacitor is on 8.5.3, which fixes a security advisory in the app shell (GHSA-rvm3-566m-v7fv).
+
 ## Bills as PDF (October 2026)
 - **Finance → Make bills:** pick a property, a floor or a room, and what to include (rent, electricity, gas, other charges). The list shows what each room still owes; tick the bills you want and download one PDF, or a single room's bill with its own **PDF** button. On phones that support it, **Share** sends the PDF straight to WhatsApp or email.
 - Each bill is one A4 page (more if the list is long): who it is from, the tenant and room, every unpaid charge with its period and due date, electricity meter readings and units, what is already paid, any advance the tenant has paid, and the amount to pay. Overdue bills say so.
