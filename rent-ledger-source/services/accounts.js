@@ -72,7 +72,10 @@ const DEFAULT_SETTINGS = {
   },
   retention: { anonymizeFormerTenantsAfterDays: 0 }, // 0 = keep until removed by hand
   receipts: { footer: "" },
-  bills: { paymentDetails: "" },    // printed on bill PDFs (UPI ID, bank account, cash timings…)
+  // paymentDetails: printed on bill PDFs (UPI ID, bank account, cash timings…).
+  // rentMode: "simple" = mark paid / set the amount paid (the original way);
+  // "instalments" = set the total rent, then add each amount received.
+  bills: { paymentDetails: "", rentMode: "simple" },
   // The AI model is off until the owner turns it on (and a key is configured).
   assistant: { aiEnabled: false },
 };
