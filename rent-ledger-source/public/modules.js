@@ -1100,6 +1100,7 @@
           ${field('Default language for tenants', `<select name="defaultLanguage" ${dis}>${opt('en', 'English', o.defaultLanguage)}${opt('hi', 'हिन्दी (Hindi)', o.defaultLanguage)}</select>`)}
           ${field('Receipt footer', `<input name="footer" maxlength="300" value="${h(o.settings.receipts?.footer || '')}" ${dis} placeholder="e.g. Thank you!">`, 'span 2')}
           ${field('Anonymise former tenants after (days, 0 = never)', `<input type="number" name="retentionDays" min="0" max="3650" value="${o.settings.retention?.anonymizeFormerTenantsAfterDays ?? 0}" ${dis}>`)}
+          ${field('How you record rent', `<select name="rentMode" ${dis}>${opt('simple', 'Simple: mark paid or set the amount paid', o.settings.bills?.rentMode || 'simple')}${opt('instalments', 'Instalments: set the total, then add each amount received', o.settings.bills?.rentMode || 'simple')}</select>`, '1 / -1')}
           ${field('How to pay (printed on bills)', `<textarea name="paymentDetails" rows="3" maxlength="600" ${dis} placeholder="UPI: yourname@upi&#10;Bank: name, account number, IFSC">${h(o.settings.bills?.paymentDetails || '')}</textarea>`, '1 / -1')}
         </div>
         <fieldset class="ai-setting"><legend>Rent Ledger AI</legend>
@@ -1164,9 +1165,9 @@
     return false;
   };
   X.submits['org-save'] = async (data) => {
-    const body = { name: data.name, timeZone: data.timeZone, defaultLanguage: data.defaultLanguage, settings: { receipts: { footer: data.footer }, bills: { paymentDetails: data.paymentDetails || '' }, retention: { anonymizeFormerTenantsAfterDays: Number(data.retentionDays) || 0 }, assistant: { aiEnabled: data.aiEnabled === 'on' } } };
+    const body = { name: data.name, timeZone: data.timeZone, defaultLanguage: data.defaultLanguage, settings: { receipts: { footer: data.footer }, bills: { paymentDetails: data.paymentDetails || '', rentMode: data.rentMode === 'instalments' ? 'instalments' : 'simple' }, retention: { anonymizeFormerTenantsAfterDays: Number(data.retentionDays) || 0 }, assistant: { aiEnabled: data.aiEnabled === 'on' } } };
     if (data.aiEnabled === 'on' && !d.org.settings.assistant?.aiEnabled && !(await confirmDialog('Questions and the figures the assistant looks up will be sent to the AI provider configured on your server.', { title: 'Turn on AI?', confirmLabel: 'Turn on' }))) return false;
-    await api('PUT', '/api/org', body); toast('Settings saved');
+    await api('PUT', '/api/org', body); cache.org = null; toast('Settings saved');
   };
   X.submits['team-invite'] = async (data) => {
     const r = await api('POST', '/api/team/invites', data);
