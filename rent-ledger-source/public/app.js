@@ -747,7 +747,11 @@ async function startTenantPayment(body, button) {
         },
         modal: { ondismiss: () => { toast('Payment was not completed.'); finish(); } },
       });
-      checkout.on('payment.failed', (response) => toast(response?.error?.description || 'Payment failed. You can try again.', true));
+      checkout.on('payment.failed', (response) => {
+        toast(response?.error?.description || 'Payment failed. You can try again.', true);
+        // Lets the owner see repeated failures; nothing is marked as paid.
+        api('POST', '/api/tenant/payments/failed', { razorpay_order_id: order.orderId, reason: response?.error?.description || response?.error?.reason || 'failed' }).catch(() => {});
+      });
       checkout.open();
     });
     cache.tenantLoadedAt = 0;
