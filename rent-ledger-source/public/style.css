@@ -1788,3 +1788,28 @@ mark.tpl-fill { background: rgba(var(--g-mid), .18); color: inherit; padding: 0 
 .steps-list li { margin-bottom: 4px; }
 .copy-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .copy-row code.details { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,.55); }
+
+/* Rent in instalments (room → Rent, when Settings → "How you record rent" is Instalments) */
+.instal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; margin-top: 10px; }
+.instal-card { border-radius: 13px; padding: 14px 16px; background: rgba(255,255,255,.55); border: 1px solid rgba(var(--c15, 60, 60, 90), .12); display: flex; flex-direction: column; gap: 10px; }
+.instal-head { display: flex; align-items: center; gap: 8px; justify-content: space-between; font-size: 16px; }
+.instal-figures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.instal-figures span { display: block; font-size: 12px; opacity: .75; }
+.instal-figures strong { font-family: var(--font-display); font-size: 19px; }
+.instal-figures .is-due { color: var(--due-red); }
+.instal-figures .is-paid { color: var(--paid-green); }
+.instal-bar { height: 8px; border-radius: 99px; background: rgba(0,0,0,.08); overflow: hidden; }
+.instal-bar i { display: block; height: 100%; border-radius: 99px; background: var(--paid-green); transition: width .3s ease; }
+.instal-list { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+.instal-list li { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; padding: 5px 0; border-top: 1px dashed rgba(0,0,0,.08); }
+.instal-list li:first-child { border-top: 0; }
+.instal-list .muted { opacity: .7; }
+.instal-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.instal-form { padding-top: 6px; border-top: 1px solid rgba(0,0,0,.06); }
+.instal-form .form-grid.cols-3 { grid-template-columns: 1fr 1fr; }
+.instal-form .form-field:first-child, .instal-form .form-field[style] { grid-column: 1 / -1 !important; }
+.instal-form input, .instal-form select { min-width: 0; width: 100%; }
+@media (max-width: 860px) {
+  .instal-grid { grid-template-columns: 1fr; }
+  .instal-figures strong { font-size: 17px; }
+}
