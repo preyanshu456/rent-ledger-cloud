@@ -91,7 +91,7 @@
     'No records yet': 'अभी कोई रिकॉर्ड नहीं', 'Properties': 'संपत्तियाँ',
     // simpler layout
     'Bills & payments': 'बिल और भुगतान', 'Repairs': 'मरम्मत', 'Settings': 'सेटिंग्स', 'More': 'और', 'More ▾': 'और ▾', 'Bank matching': 'बैंक मिलान',
-    'Profile': 'प्रोफ़ाइल', 'Rooms occupied': 'भरे हुए कमरे', 'Collected this month': 'इस महीने वसूला गया', 'Still to collect': 'वसूली बाकी',
+    'Profile': 'प्रोफ़ाइल', 'Rooms occupied': 'भरे हुए कमरे', 'Collected this month': 'इस महीने वसूला गया', 'Received this month': 'इस महीने मिला', "This month's bills": 'इस महीने के बिल', 'Still to collect': 'वसूली बाकी',
     'Show details': 'विवरण दिखाएँ', 'This month': 'इस महीने', 'Open bills (all months)': 'खुले बिल (सभी महीने)', 'Vacant rooms': 'खाली कमरे',
     'Expenses this month': 'इस महीने के खर्च', 'Open Finance →': 'वित्त खोलें →', 'More actions': 'और कार्य',
     'Every bill and payment in one place.': 'हर बिल और भुगतान एक जगह।',
@@ -110,6 +110,86 @@
     // finance: make bills
     'Make bills': 'बिल बनाएँ', 'Bills for what each room still owes': 'हर कमरे के बकाया का बिल', 'Floor': 'मंज़िल', 'All floors': 'सभी मंज़िलें', 'All rooms': 'सभी कमरे', 'Ground floor': 'भूतल', 'Include': 'शामिल करें', 'Other': 'अन्य', 'Tenants who moved out': 'जा चुके किरायेदार', 'bills selected': 'बिल चुने गए', 'to collect': 'वसूलना है', 'Download PDF': 'PDF डाउनलोड करें', 'PDF': 'PDF', 'Share': 'शेयर करें', 'To pay': 'देना है', 'after advance': 'अग्रिम घटाकर', 'No tenant': 'कोई किरायेदार नहीं', 'Owner’s floor': 'मालिक की मंज़िल', '(moved out)': '(जा चुके)', 'Nothing is pending for this choice.': 'इस चुनाव के लिए कुछ भी बकाया नहीं है।', 'Not included: tenants who moved out owe': 'शामिल नहीं: जा चुके किरायेदारों का बकाया', 'How to pay (printed on every bill)': 'भुगतान कैसे करें (हर बिल पर छपेगा)', 'How to pay (printed on bills)': 'भुगतान कैसे करें (बिलों पर छपेगा)', 'Not added yet. Add your UPI ID or bank details so tenants know how to pay.': 'अभी जोड़ा नहीं गया। अपनी UPI ID या बैंक विवरण जोड़ें ताकि किरायेदार जान सकें कि भुगतान कैसे करें।', 'Choose at least one type.': 'कम से कम एक प्रकार चुनें।', 'Tick at least one bill.': 'कम से कम एक बिल चुनें।', 'Saved. It will be printed on every bill.': 'सहेजा गया। यह हर बिल पर छपेगा।',
     'You can turn on AI in Settings.': 'आप सेटिंग्स में AI चालू कर सकते हैं।', 'The owner can turn on AI in Settings.': 'मालिक सेटिंग्स में AI चालू कर सकते हैं।',
+    // more screens (October 2026)
+    'HOME': 'घर', 'PROPERTY, SIMPLIFIED': 'संपत्ति, आसान तरीके से', 'A calmer way to manage every key.': 'हर चाबी को सँभालने का एक सुकून भरा तरीका।',
+    'Keep rent, electricity, rooms and tenant records in one considered place.': 'किराया, बिजली, कमरे और किरायेदारों का रिकॉर्ड एक ही जगह पर रखें।',
+    '◈ Owner command centre': '◈ मालिक का नियंत्रण केंद्र', '◌ Private tenant billing': '◌ किरायेदारों के निजी बिल', 'Made for modern rental homes': 'आज के किराये के घरों के लिए बना',
+    'Your complete property workspace awaits.': 'आपकी पूरी संपत्ति का कामकाज यहाँ है।',
+    'Open this page in Chrome or Edge, then use its Install app option.': 'यह पेज Chrome या Edge में खोलें, फिर उसका "ऐप इंस्टॉल करें" विकल्प चुनें।', 'CREATE ACCOUNT': 'खाता बनाएँ',
+    'Join as a owner': 'मालिक के रूप में जुड़ें', 'Join as a tenant': 'किरायेदार के रूप में जुड़ें', 'Create your private owner workspace.': 'अपना निजी मालिक खाता बनाएँ।', 'Setup code': 'सेटअप कोड',
+    '(only if your server asks for one)': '(सिर्फ़ तब, जब सर्वर माँगे)', 'Your name': 'आपका नाम', 'At least 8 characters': 'कम से कम 8 अक्षर', 'PASSWORD RESET': 'पासवर्ड रीसेट',
+    'Get a one-time code': 'एक बार का कोड पाएँ',
+    'Enter the mobile number or email used for your account. We will send a 6-digit verification code.': 'अपने खाते का मोबाइल नंबर या ईमेल डालें। हम 6 अंकों का सत्यापन कोड भेजेंगे।',
+    'Sections': 'हिस्से', 'Reference (UTR / cheque no.)': 'संदर्भ (UTR / चेक नंबर)',
+    'Apply to the oldest unpaid bills automatically (anything extra is kept as credit)': 'सबसे पुराने बकाया बिलों में अपने आप जोड़ें (बचा हुआ पैसा क्रेडिट में रहेगा)', 'Cash': 'नकद', 'Upi': 'UPI',
+    'UPI': 'UPI', 'Bank transfer': 'बैंक ट्रांसफ़र', 'Cheque': 'चेक', 'Rent overdue': 'किराया बकाया', 'in-app': 'ऐप में', 'In-app': 'ऐप में',
+    'Can’t reach: no login and no consent for email/SMS/WhatsApp': 'संपर्क नहीं हो सकता: न लॉगिन है, न ईमेल/SMS/WhatsApp की सहमति', 'Rent due soon': 'किराया जल्द देय', 'Rent due today': 'किराया आज देय',
+    'Lease ending': 'लीज़ ख़त्म हो रही है', 'Payment received': 'भुगतान मिला', 'Maintenance update': 'मरम्मत की जानकारी', 'In-app: on': 'ऐप में: चालू', 'In-app: off': 'ऐप में: बंद',
+    'Email: not set up': 'ईमेल: सेट नहीं', 'Sms: not set up': 'SMS: सेट नहीं', 'Whatsapp: not set up': 'WhatsApp: सेट नहीं', 'Email: on': 'ईमेल: चालू', 'Email: off': 'ईमेल: बंद',
+    'Email: preview only': 'ईमेल: सिर्फ़ पूर्वावलोकन', 'Sms: on': 'SMS: चालू', 'Sms: off': 'SMS: बंद', 'Sms: preview only': 'SMS: सिर्फ़ पूर्वावलोकन', 'Whatsapp: on': 'WhatsApp: चालू',
+    'Whatsapp: off': 'WhatsApp: बंद', 'Whatsapp: preview only': 'WhatsApp: सिर्फ़ पूर्वावलोकन',
+    'Preview mode: email, SMS and WhatsApp messages are marked “simulated” and are not actually sent.': 'पूर्वावलोकन मोड: ईमेल, SMS और WhatsApp संदेश “नकली” के रूप में दर्ज होते हैं और सच में नहीं भेजे जाते।',
+    'Prepare reminders automatically every day': 'हर दिन अपने आप रिमाइंडर तैयार करें', 'Wait for my approval before sending (recommended)': 'भेजने से पहले मेरी मंज़ूरी का इंतज़ार करें (सुझाया गया)',
+    'Remind on the due date': 'देय तिथि पर याद दिलाएँ', 'Days before due date': 'देय तिथि से पहले के दिन', 'Overdue reminder every (days)': 'बकाया रिमाइंडर हर (दिन)',
+    'Maximum overdue reminders': 'अधिकतम बकाया रिमाइंडर', 'Lease ending reminders (days before, comma separated)': 'लीज़ ख़त्म होने के रिमाइंडर (कितने दिन पहले, कॉमा से अलग)', 'Email': 'ईमेल',
+    'Sms': 'SMS', 'Whatsapp': 'WhatsApp',
+    'Tenants only get email, SMS or WhatsApp if they have agreed to it (set on the tenant’s record or in their portal). In-app messages need a tenant login.': 'किरायेदारों को ईमेल, SMS या WhatsApp तभी मिलते हैं जब उन्होंने सहमति दी हो (किरायेदार के रिकॉर्ड या उनके पोर्टल में)। ऐप के संदेशों के लिए किरायेदार का लॉगिन ज़रूरी है।',
+    'Name': 'नाम', 'Time zone': 'समय क्षेत्र', 'Default language for tenants': 'किरायेदारों की डिफ़ॉल्ट भाषा', 'Receipt footer': 'रसीद के नीचे का संदेश',
+    'Anonymise former tenants after (days, 0 = never)': 'पुराने किरायेदारों की पहचान हटाएँ (दिन बाद, 0 = कभी नहीं)', 'Use the AI model for the assistant': 'सहायक के लिए AI मॉडल इस्तेमाल करें',
+    'No AI provider is set up on the server, so the assistant uses basic mode. When AI is on, your questions and the figures it looks up are sent to the provider. Phone numbers, emails, ID numbers and documents are never sent.': 'सर्वर पर कोई AI सेवा सेट नहीं है, इसलिए सहायक बेसिक मोड में चलता है। AI चालू होने पर आपके सवाल और उनसे जुड़े आँकड़े सेवा को भेजे जाते हैं। फ़ोन नंबर, ईमेल, पहचान नंबर और दस्तावेज़ कभी नहीं भेजे जाते।',
+    'this device': 'यह डिवाइस',
+    'Choose a colour theme. It changes the whole app on this device and is remembered next time.': 'रंग की थीम चुनें। इससे इस डिवाइस पर पूरा ऐप बदल जाता है और अगली बार भी याद रहता है।', 'Indigo': 'नील',
+    'Teal': 'हरा-नीला', 'Ocean': 'समुद्री', 'Forest': 'वन', 'Plum': 'बैंगनी', 'Graphite': 'ग्रेफ़ाइट',
+    'Tenants can’t pay online yet. To show a Pay button on their bills, add your Razorpay keys (RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET) to the server settings in Railway.': 'किरायेदार अभी ऑनलाइन भुगतान नहीं कर सकते। उनके बिलों पर "भुगतान करें" बटन दिखाने के लिए Railway में सर्वर सेटिंग्स में अपनी Razorpay कुंजियाँ (RAZORPAY_KEY_ID और RAZORPAY_KEY_SECRET) जोड़ें।',
+    'e.g. Thank you!': 'जैसे: धन्यवाद!', 'Colour theme': 'रंग की थीम', 'Contact': 'संपर्क', 'Role': 'भूमिका', 'Since': 'कब से', 'No pending invites.': 'कोई लंबित आमंत्रण नहीं।',
+    'Invite a property manager': 'प्रॉपर्टी मैनेजर को आमंत्रित करें', 'Name *': 'नाम *', 'Their mobile or email *': 'उनका मोबाइल या ईमेल *',
+    'Managers can run day-to-day work (tenants, bills, payments, maintenance, reminders, reports) but can’t reverse payments, void or waive bills, settle deposits, manage the team, export data or see the audit log.': 'मैनेजर रोज़ का काम (किरायेदार, बिल, भुगतान, मरम्मत, रिमाइंडर, रिपोर्ट) कर सकते हैं, लेकिन भुगतान वापस लेना, बिल रद्द या माफ़ करना, जमा राशि निपटाना, टीम सँभालना, डेटा निकालना या ऑडिट लॉग देखना नहीं कर सकते।',
+    'latest 200': 'आख़िरी 200', 'When': 'कब', 'Who': 'किसने', 'Action': 'काम',
+    'The server keeps automatic database backups (at every start-up and once a day). You can also make one now, or download all your records.': 'सर्वर अपने आप डेटाबेस का बैकअप रखता है (हर बार शुरू होने पर और दिन में एक बार)। आप अभी भी एक बना सकते हैं, या अपने सारे रिकॉर्ड डाउनलोड कर सकते हैं।',
+    'Download all records (JSON)': 'सारे रिकॉर्ड डाउनलोड करें (JSON)', 'Backup': 'बैकअप', 'Time': 'समय',
+    'The download contains tenants’ personal details. Keep it private. Uploaded documents are not included.': 'डाउनलोड में किरायेदारों की निजी जानकारी है। इसे निजी रखें। अपलोड किए गए दस्तावेज़ शामिल नहीं हैं।',
+    'Outstanding now': 'अभी बकाया',
+    'Billed and collected use bills dated in the selected months; received and expenses use payment and expense dates; outstanding and overdue are all open bills as of today.': 'बिल और वसूली चुने गए महीनों के बिलों से; मिला पैसा और खर्च भुगतान और खर्च की तारीख़ से; बकाया और देरी वाले आज तक के सभी खुले बिल हैं।',
+    'What to include': 'क्या शामिल करें', 'Active': 'चालू', 'Draft': 'मसौदा', 'Ended': 'ख़त्म', 'Terminated': 'समाप्त किया गया',
+    'No leases yet. Tenants without a lease are billed from the Rent tab as before.': 'अभी कोई लीज़ नहीं। जिन किरायेदारों की लीज़ नहीं है, उनका बिल पहले की तरह किराया टैब से बनता है।',
+    'Read fields from the agreement (PDF)': 'एग्रीमेंट (PDF) से जानकारी पढ़ें', '…or paste its text': '…या उसका टेक्स्ट चिपकाएँ', 'Due day of month (1-28)': 'महीने की देय तारीख़ (1-28)',
+    'Notice period (days)': 'नोटिस अवधि (दिन)', 'Create rent bills automatically each period': 'हर अवधि में अपने आप किराये के बिल बनाएँ', 'Terms / notes': 'शर्तें / टिप्पणी',
+    'No expenses recorded for these filters.': 'इन फ़िल्टर के लिए कोई खर्च दर्ज नहीं।',
+    'Amounts can’t be edited after saving; void a wrong entry and add the correct one. Voided entries stay in the audit log.': 'सहेजने के बाद राशि बदली नहीं जा सकती; ग़लत एंट्री रद्द करें और सही एंट्री जोड़ें। रद्द एंट्री ऑडिट लॉग में रहती हैं।',
+    'Receipt (optional)': 'रसीद (वैकल्पिक)', 'Statement CSV file': 'स्टेटमेंट की CSV फ़ाइल', '…or paste the CSV': '…या CSV चिपकाएँ', 'Import': 'इंपोर्ट करें',
+    'Only money coming in is imported. Lines already imported are skipped automatically.': 'सिर्फ़ आने वाला पैसा इंपोर्ट होता है। पहले से इंपोर्ट की गई लाइनें अपने आप छोड़ दी जाती हैं।',
+    'To match': 'मिलान बाकी', 'Matched': 'मिलान हुआ', 'Ignored': 'अनदेखा', 'No credits waiting to be matched.': 'मिलान के लिए कोई जमा बाकी नहीं।', 'Nothing here.': 'यहाँ कुछ नहीं।',
+    'Leave the months empty for the last 12 months.': 'पिछले 12 महीनों के लिए महीने ख़ाली छोड़ दें।', 'Rent collection': 'किराया वसूली',
+    'Rent billed and collected per room and month.': 'हर कमरे और महीने का बिल और वसूली।', 'Outstanding dues': 'बकाया राशि',
+    'Every unpaid bill today, oldest first.': 'आज तक के सभी बकाया बिल, सबसे पुराने पहले।', 'Payments received': 'मिले भुगतान',
+    'All money received in the period, by method.': 'इस अवधि में मिला सारा पैसा, तरीके के अनुसार।', 'Property income & expenses': 'संपत्ति की आय और खर्च',
+    'Billed, received, expenses and net per property.': 'हर संपत्ति का बिल, मिला पैसा, खर्च और शुद्ध।', 'Monthly cash flow': 'मासिक नकदी प्रवाह',
+    'Money in and out, month by month.': 'हर महीने आया और गया पैसा।', 'Lease expiries': 'लीज़ की समाप्ति', 'Active leases and when they end.': 'चालू लीज़ और वे कब ख़त्म होंगी।',
+    'Expenses (incl. maintenance)': 'खर्च (मरम्मत सहित)', 'Every expense in the period.': 'इस अवधि का हर खर्च।', 'Deposits & settlements': 'जमा राशि और निपटारे',
+    'Deposits held, deductions and refunds.': 'रखी गई जमा राशि, कटौती और वापसी।', 'Avg. monthly expenses': 'औसत मासिक खर्च', 'Rate': 'दर', 'estimate': 'अनुमान',
+    'Net after typical expenses': 'सामान्य खर्च के बाद शुद्ध', 'Collection trend:': 'वसूली का रुझान:', 'not enough history': 'पर्याप्त इतिहास नहीं', 'possible shortfall': 'संभावित कमी',
+    'falling': 'घट रहा', 'rising': 'बढ़ रहा', 'steady': 'स्थिर',
+    'Expected rent = active leases billing next month + occupied rooms without a lease at their monthly rent.': 'अनुमानित किराया = अगले महीने बिल बनने वाली चालू लीज़ + बिना लीज़ वाले भरे कमरे उनके मासिक किराये पर।',
+    'Vacancies, new tenants and one-off costs are not predicted.': 'ख़ाली कमरे, नए किरायेदार और एक बार के खर्च का अनुमान नहीं लगाया जाता।', 'Nothing unusual found.': 'कुछ असामान्य नहीं मिला।',
+    'These are prompts to review, not conclusions. Many have ordinary explanations.': 'ये जाँचने के संकेत हैं, निष्कर्ष नहीं। कई की सामान्य वजह होती है।',
+    'Ask a question to get started.': 'शुरू करने के लिए एक सवाल पूछें।', 'Who is overdue?': 'किसका भुगतान देर से है?', 'Who hasn’t paid this month?': 'इस महीने किसने भुगतान नहीं किया?',
+    'Leases expiring in 60 days': '60 दिनों में ख़त्म होने वाली लीज़', 'Draft reminders for overdue tenants': 'देर वाले किरायेदारों के लिए रिमाइंडर तैयार करें',
+    'e.g. Which tenants haven\'t paid this month?': 'जैसे: इस महीने किन किरायेदारों ने भुगतान नहीं किया?', 'Sign-in contact': 'साइन-इन संपर्क', 'Account type': 'खाते का प्रकार',
+    'Member since': 'सदस्य कब से', 'For your security, passwords are never displayed. You can update yours at any time.': 'आपकी सुरक्षा के लिए पासवर्ड कभी दिखाए नहीं जाते। आप इसे कभी भी बदल सकते हैं।',
+    'Current password': 'मौजूदा पासवर्ड', 'Confirm new password': 'नए पासवर्ड की पुष्टि करें', 'Update password': 'पासवर्ड बदलें', '← All buildings': '← सभी इमारतें',
+    'Total rent collected': 'कुल वसूला गया किराया', 'Rent billed': 'किराये का बिल', 'Floors & rooms': 'मंज़िलें और कमरे', '+ Add room': '+ कमरा जोड़ें', '+ Add owner floor': '+ मालिक की मंज़िल जोड़ें',
+    'Building details': 'इमारत की जानकारी', 'Building name': 'इमारत का नाम', 'Address': 'पता', 'Total floors': 'कुल मंज़िलें', 'Save changes': 'बदलाव सहेजें', 'Delete building': 'इमारत हटाएँ',
+    'Add a floor / room': 'मंज़िल / कमरा जोड़ें', 'Floor number *': 'मंज़िल नंबर *', 'Room / unit label *': 'कमरा / यूनिट का नाम *', 'Monthly rent (₹)': 'मासिक किराया (₹)', 'Save room': 'कमरा सहेजें',
+    'e.g. 1A or Room 3': 'जैसे: 1A या कमरा 3', 'Optional': 'वैकल्पिक', 'Update rent': 'किराया बदलें', 'Mobile': 'मोबाइल', '+ Add entry': '+ एंट्री जोड़ें', 'Paid on': 'भुगतान की तारीख़',
+    'Mark paid': 'भुगतान हुआ', 'Add rent entry': 'किराये की एंट्री जोड़ें', 'Month *': 'महीना *', 'Year *': 'साल *', 'Rent amount (₹) *': 'किराये की राशि (₹) *',
+    'Amount paid (₹)': 'भुगतान की गई राशि (₹)', 'Paid date': 'भुगतान की तारीख़', 'Save entry': 'एंट्री सहेजें', 'Electricity history': 'बिजली का इतिहास', '+ Add reading': '+ रीडिंग जोड़ें',
+    'Prev.': 'पिछली', 'Current': 'मौजूदा', 'Units': 'यूनिट', 'Add electricity entry': 'बिजली की एंट्री जोड़ें', 'Rate per unit (₹)': 'प्रति यूनिट दर (₹)', 'Previous reading': 'पिछली रीडिंग',
+    'Current reading *': 'मौजूदा रीडिंग *', 'Gas meter & billing authority': 'गैस मीटर और बिलिंग संस्था',
+    'Link this room to a gas meter ID and a billing authority (gas board, LPG/PNG supplier, etc.) before adding gas bills.': 'गैस बिल जोड़ने से पहले इस कमरे को गैस मीटर ID और बिलिंग संस्था (गैस बोर्ड, LPG/PNG सप्लायर आदि) से जोड़ें।',
+    'Meter ID *': 'मीटर ID *', 'Billing authority *': 'बिलिंग संस्था *', 'Link meter': 'मीटर जोड़ें', 'Gas history': 'गैस का इतिहास', '+ Add bill': '+ बिल जोड़ें',
+    'No gas entries yet.': 'अभी गैस की कोई एंट्री नहीं।', 'Consumer / BP number on the gas bill': 'गैस बिल पर उपभोक्ता / BP नंबर', 'e.g. Indraprastha Gas Limited': 'जैसे: इंद्रप्रस्थ गैस लिमिटेड',
+    'Link a gas meter first': 'पहले गैस मीटर जोड़ें', 'View your rent and electricity bill in one place.': 'अपना किराया और बिजली का बिल एक ही जगह देखें।',
+    "Download a copy of all your records (buildings, tenants and every bill). Receipt images are not included. Keep the file somewhere private, because it contains tenants' personal details. The server also keeps automatic daily backups.": 'अपने सारे रिकॉर्ड (इमारतें, किरायेदार और हर बिल) की एक कॉपी डाउनलोड करें। रसीद की तस्वीरें शामिल नहीं हैं। फ़ाइल को किसी निजी जगह रखें, क्योंकि इसमें किरायेदारों की निजी जानकारी है। सर्वर भी हर दिन अपने आप बैकअप रखता है।',
   };
 
   const KEY = 'rentLedgerLang';
@@ -134,11 +214,29 @@
       else for (const a of ATTRS) { const v = n.getAttribute?.(a); if (v && HI[v.trim()]) n.setAttribute(a, HI[v.trim()]); }
     }
   }
+  // Text with numbers or dates in it ("Floor 2", "Rent Oct 2026").
+  const MONTHS_HI = { Jan: 'जन', Feb: 'फ़र', Mar: 'मार्च', Apr: 'अप्रैल', May: 'मई', Jun: 'जून', Jul: 'जुलाई', Aug: 'अग', Sep: 'सित', Oct: 'अक्टू', Nov: 'नव', Dec: 'दिस' };
+  const M = '(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)';
+  const PATTERNS = [
+    [new RegExp(`^${M} (\\d{4})$`), (m, mo, y) => `${MONTHS_HI[mo]} ${y}`],
+    [new RegExp(`^(Rent|Electricity|Gas) ${M} (\\d{4})$`), (m, k, mo, y) => `${HI[k] || k} ${MONTHS_HI[mo]} ${y}`],
+    [new RegExp(`^Edit rent entry · ${M} (\\d{4})$`), (m, mo, y) => `किराये की एंट्री बदलें · ${MONTHS_HI[mo]} ${y}`],
+    [/^Floor (\d+)$/, (m, n) => `मंज़िल ${n}`],
+    [/^Delete floor (\d+)…$/, (m, n) => `मंज़िल ${n} हटाएँ…`],
+    [/^Floor (\d+) · (₹[\d,.]+)\/mo rent · (₹[\d,.]+) deposit$/, (m, n, r, d) => `मंज़िल ${n} · ${r}/माह किराया · ${d} जमा`],
+    [/^Forecast for (\d{4}-\d{2})$/, (m, ym) => `${ym} का अनुमान`],
+    [/^Collection follows the last (\d+) month\(s\) average of (\d+)%\.$/, (m, n, pct) => `वसूली पिछले ${n} महीने के औसत ${pct}% के हिसाब से मानी गई है।`],
+    [/^Expenses follow the last (\d+) months' average \((.+)\)\.$/, (m, n, amt) => `खर्च पिछले ${n} महीनों के औसत (${amt}) के हिसाब से माना गया है।`],
+  ];
   function translateText(node) {
     const raw = node.nodeValue;
     const key = raw.trim();
-    if (!key || !HI[key]) return;
-    node.nodeValue = raw.replace(key, HI[key]);
+    if (!key) return;
+    if (HI[key]) { node.nodeValue = raw.replace(key, HI[key]); return; }
+    if (!/\d/.test(key)) return;
+    for (const [re, fn] of PATTERNS) {
+      if (re.test(key)) { node.nodeValue = raw.replace(key, key.replace(re, fn)); return; }
+    }
   }
 
   const observer = new MutationObserver((mutations) => {
