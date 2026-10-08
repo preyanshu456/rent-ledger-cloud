@@ -1778,3 +1778,13 @@ mark.tpl-fill { background: rgba(var(--g-mid), .18); color: inherit; padding: 0 
 .form-field input:focus, .form-field select:focus, .form-field textarea:focus { outline: none; }
 /* Finance on phones: the short month table uses the full card width */
 @media (max-width: 600px) { table.month-table { width: 100% !important; } }
+
+/* Settings → Online payments */
+.form-grid.cols-2 { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 860px) { .form-grid.cols-2 { grid-template-columns: 1fr; } }
+.pay-acct-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 10px; }
+.pay-acct-status code { font-size: 14px; }
+.steps-list { margin: 10px 0 4px 20px; line-height: 1.6; }
+.steps-list li { margin-bottom: 4px; }
+.copy-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.copy-row code.details { flex: 1 1 260px; min-width: 0; overflow-wrap: anywhere; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,.55); }
