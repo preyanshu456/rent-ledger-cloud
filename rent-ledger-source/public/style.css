@@ -704,22 +704,6 @@ a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 .quick-gas-form .form-field { flex: 0 1 220px; min-width: 0; }
 .meter-code { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12.5px; }
 .table-scroll { overflow-x: auto; }
-.gas-todo h3 small { font: 400 11px var(--font-mono, ui-monospace, monospace); color: var(--teal-mid, rgb(var(--c7))); margin-left: 8px; }
-.gas-todo-table td { vertical-align: middle; }
-.gas-todo-table a { color: var(--teal-deep, rgb(var(--c6))); font-weight: 600; white-space: nowrap; }
-.gas-amount-input { width: 100%; max-width: 160px; padding: 8px 10px; }
-@media (max-width: 800px) {
-  .gas-todo-table thead { display: none; }
-  .gas-todo-table, .gas-todo-table tbody { display: block; width: 100%; }
-  .gas-todo-table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "room amount" "meter link"; gap: 8px 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--rule); }
-  .gas-todo-table td, .gas-todo-table td:first-child { display: block; padding: 0 !important; border: 0 !important; position: static !important; box-shadow: none !important; background: none !important; }
-  .gas-todo-table tr:hover td, .gas-todo-table tr:hover td:first-child { background: none !important; }
-  .gas-todo-table td:nth-child(1) { grid-area: room; }
-  .gas-todo-table td:nth-child(2) { grid-area: meter; }
-  .gas-todo-table td:nth-child(3) { grid-area: link; text-align: right; }
-  .gas-todo-table td:nth-child(4) { grid-area: amount; }
-  .gas-amount-input { max-width: 130px; }
-}
 
 /* =====================================================================
    Motion & polish
@@ -1168,7 +1152,6 @@ table.ledger th { border-bottom: 1px solid rgba(var(--g-deep), .22) !important; 
 table.ledger td { border-bottom-color: rgba(var(--g-deep), .08) !important; }
 table.ledger tr:hover td { background: rgba(255,255,255,.3); }
 @media (max-width: 860px) {
-  table.ledger:not(.tenant-ledger):not(.gas-todo-table) :is(th, td):first-child, table.ledger:not(.tenant-ledger):not(.gas-todo-table) tr:hover td:first-child { background: rgba(250,251,255,.9) !important; }
 }
 
 /* Toasts, dialog and picker in glass */
@@ -1725,10 +1708,12 @@ button, a, [data-nav], [data-action], label, summary, select, input, textarea { 
   .sc-cloud { filter: none !important; opacity: .35 !important; }
   /* Text fields at 16px: smaller text makes iPhones zoom the page on every tap into a field */
   input, select, textarea { font-size: 16px !important; }
-  /* Top of the screen: content scrolling under the clock and battery gets a solid strip */
-  body::after { content: ""; position: fixed; left: 0; right: 0; top: 0; height: env(safe-area-inset-top); background: rgb(var(--g-deep)); z-index: 95; pointer-events: none; }
+  /* Top of the screen: the clock and battery sit on a light strip (dark text
+     stays readable in Safari, the installed app and the iPhone app), and the
+     header starts below it instead of hiding behind it. */
+  body::after { content: ""; position: fixed; left: 0; right: 0; top: 0; height: env(safe-area-inset-top); background: rgba(var(--c5), .96); box-shadow: 0 1px 0 rgba(var(--c8), .08); z-index: 95; pointer-events: none; }
   .sidebar { margin-top: calc(10px + env(safe-area-inset-top)) !important; }
-  .tenant-top { padding-top: env(safe-area-inset-top); height: calc(72px + env(safe-area-inset-top)); }
+  .tenant-top { top: calc(8px + env(safe-area-inset-top)) !important; margin-top: calc(8px + env(safe-area-inset-top)) !important; padding-top: 0 !important; height: 62px !important; }
   /* Pressed state, since phones have no hover */
   .btn:active, .mnav-btn:active, .msheet-grid button:active, .msheet-row:active, .tab-btn:active { opacity: .7; }
   /* Sign-in: a short header so the form is on screen without scrolling */
@@ -1757,8 +1742,6 @@ button, a, [data-nav], [data-action], label, summary, select, input, textarea { 
   .floor-control form input { flex: 1; min-width: 0; }
   .floor-delete { margin-top: 4px; }
 }
-.gas-todo-closed { display: flex; width: 100%; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 18px !important; border: 0; text-align: left; font: 500 14px var(--font-body); color: inherit; cursor: pointer; }
-.gas-todo-count { min-width: 26px; padding: 2px 9px; border-radius: 99px; background: rgb(var(--g-primary)); color: #fff; font: 600 12px/20px var(--font-mono); text-align: center; }
 .tpl-example-label { margin: 0 0 4px; font: 600 10px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; opacity: .55; }
 .tpl-example { line-height: 1.6; }
 mark.tpl-fill { background: rgba(var(--g-mid), .18); color: inherit; padding: 0 2px; border-radius: 4px; }
@@ -1776,3 +1759,22 @@ mark.tpl-fill { background: rgba(var(--g-mid), .18); color: inherit; padding: 0 
   .tab-row { width: 100%; justify-content: space-between; }
   .tab-row .tab-btn { flex: 1 1 auto; padding: 9px 8px !important; font-size: 10.5px !important; letter-spacing: .05em !important; }
 }
+/* The app name stays readable over the moving clouds: full white with a soft
+   shadow, and on phones the sign-in header is solid instead of see-through. */
+.sidebar .brand, .auth-art .brand, .auth-brand { color: #fff !important; text-shadow: 0 1px 2px rgba(var(--g-ink), .35); }
+@media (max-width: 860px), (hover: none) {
+  .auth-art { background: linear-gradient(145deg, rgb(var(--g-deep)), rgb(var(--g-primary))) !important; }
+  .auth-copy h1 { color: #fff; text-shadow: 0 1px 2px rgba(var(--g-ink), .3); }
+}
+/* Tenant home: the "Total pending" card was faded as a whole (and the sunset
+   showed through it); only its note is quieter now. Balance row is solid. */
+.pay-all-card.muted { opacity: 1; }
+.pay-all-card.muted small { opacity: .85; }
+@media (max-width: 860px), (hover: none) {
+  .tenant-balance { background: rgba(255,255,255,.88) !important; }
+}
+/* The field you are typing in is outlined in the theme colour, not orange,
+   so it is not mistaken for an error. */
+.form-field input:focus, .form-field select:focus, .form-field textarea:focus { outline: none; }
+/* Finance on phones: the short month table uses the full card width */
+@media (max-width: 600px) { table.month-table { width: 100% !important; } }
