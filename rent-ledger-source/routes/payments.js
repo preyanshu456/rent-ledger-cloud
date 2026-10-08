@@ -97,7 +97,7 @@ function register(app, { db, todayFor, log }) {
       } catch (err) {
         if (err.razorpayStatus === 401) {
           log.error("Razorpay rejected the API keys — check RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.", { requestId: req.id });
-          return res.status(401).json({ error: "Online payments are misconfigured (Razorpay rejected the API keys). Please tell your owner." });
+          return res.status(502).json({ error: "Online payments are misconfigured (Razorpay rejected the API keys). Please tell your owner." });
         }
         log.error("Razorpay order creation failed", { requestId: req.id, error: err.message });
         return res.status(500).json({ error: `Could not start the payment: ${err.message}` });
