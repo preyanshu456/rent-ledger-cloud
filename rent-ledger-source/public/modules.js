@@ -58,6 +58,7 @@
 
   // Opens a printable page or file that needs the signed-in user's token.
   async function openAuthed(url) {
+    if (window.Capacitor?.isNativePlatform?.()) return openInApp(url);
     const win = window.open('', '_blank');
     try {
       const res = await fetch(apiUrl(url), { headers: { Authorization: `Bearer ${session?.token || ''}` } });
@@ -68,13 +69,41 @@
       setTimeout(() => URL.revokeObjectURL(link), 120_000);
     } catch (err) { if (win) win.close(); throw err; }
   }
+  // Android / iPhone app: receipts and statements open on a full-screen sheet
+  // inside the app (with Share), since there is no browser tab to open.
+  async function openInApp(url) {
+    const res = await fetch(apiUrl(url), { headers: { Authorization: `Bearer ${session?.token || ''}` } });
+    if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Could not open this.'); }
+    const type = res.headers.get('content-type') || '';
+    const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '')?.[1] || (type.includes('html') ? 'document.html' : 'document');
+    if (!type.includes('html')) return saveBlob(await res.blob(), name);
+    const html = await res.text();
+    const sheet = document.createElement('div');
+    sheet.className = 'doc-viewer';
+    sheet.innerHTML = '<div class="doc-viewer-bar"><button type="button" class="btn secondary" data-doc-close>Close</button><button type="button" class="btn" data-doc-share>Share</button></div><iframe title="Document" sandbox=""></iframe>';
+    sheet.querySelector('iframe').srcdoc = html;
+    sheet.querySelector('[data-doc-close]').onclick = () => sheet.remove();
+    sheet.querySelector('[data-doc-share]').onclick = () => saveBlob(new Blob([html], { type: 'text/html' }), name.replace(/\.[a-z]+$/i, '') + '.html').catch((err) => toast(err.message, true));
+    document.body.appendChild(sheet);
+  }
   async function downloadAuthed(url, fallbackName) {
     const res = await fetch(apiUrl(url), { headers: { Authorization: `Bearer ${session?.token || ''}` } });
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || 'Download failed'); }
     const name = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '')?.[1] || fallbackName;
-    saveBlob(await res.blob(), name);
+    await saveBlob(await res.blob(), name);
+  }
+  // In the Android / iPhone app a file can't simply be "downloaded"; it is
+  // saved in the app and the phone's share sheet opens (WhatsApp, Files, Drive…).
+  const nativeFiles = () => Boolean(window.Capacitor?.isNativePlatform?.() && window.Capacitor.Plugins?.Filesystem && window.Capacitor.Plugins?.Share);
+  const blobToBase64 = (blob) => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1]); r.onerror = () => reject(new Error('The file could not be read.')); r.readAsDataURL(blob); });
+  async function shareNative(blob, name) {
+    const { Filesystem, Share } = window.Capacitor.Plugins;
+    const written = await Filesystem.writeFile({ path: name, data: await blobToBase64(blob), directory: 'CACHE' });
+    try { await Share.share({ title: name, url: written.uri, dialogTitle: name }); }
+    catch (err) { if (!/cancel/i.test(String(err?.message || err))) throw err; }
   }
   function saveBlob(blob, name) {
+    if (nativeFiles()) return shareNative(blob, name);
     const link = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = link; a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -98,7 +127,9 @@
   X.actions['open-page'] = async (el) => { await openAuthed(el.dataset.url); return false; };
   X.actions['download'] = async (el) => { await downloadAuthed(el.dataset.url, el.dataset.name || 'export.csv'); return false; };
   X.actions['open-doc'] = async (el) => { await openAuthed(`/api/documents/${el.dataset.id}/file`); return false; };
-  X.actions['set-state'] = (el) => { const [view, key] = el.dataset.key.split('.'); s[view][key] = el.dataset.value; state.forms = {}; };
+  // Switching a tab or filter only changes what is shown; it doesn't throw away
+  // what has already been loaded, so the switch is quick.
+  X.actions['set-state'] = async (el) => { const [view, key] = el.dataset.key.split('.'); s[view][key] = el.dataset.value; state.forms = {}; await render(); return false; };
   X.changes['state'] = (el) => { const [view, key] = el.dataset.key.split('.'); s[view][key] = el.type === 'checkbox' ? el.checked : el.value; };
 
   // ---------- sidebar navigation ----------
@@ -197,9 +228,18 @@
   X.tenantBell = () => `<button type="button" class="side-bell tenant-bell ${state.tenantView === 'notifications' ? 'active' : ''}" data-tenant-nav="notifications" aria-label="Notifications${X.tenantUnread ? `, ${X.tenantUnread} unread` : ''}">${icon('bell')}${X.tenantUnread ? `<span class="nav-count">${X.tenantUnread}</span>` : ''}</button>`;
 
   // Called before every owner/manager render.
+  // Who is signed in is fetched once; the unread count is checked in the
+  // background (at most every 30 seconds) so it never holds up a page.
   X.beforeOwnerRender = async () => {
     if (!X.me) { try { X.me = await api('GET', '/api/auth/me'); } catch { X.me = { permissions: [] }; } }
-    try { X.unread = (await api('GET', '/api/notifications')).unread; } catch { X.unread = 0; }
+    if (Date.now() - (X.unreadAt || 0) > 30_000 || state.view === 'notifications') {
+      X.unreadAt = Date.now();
+      api('GET', '/api/notifications').then((r) => {
+        if ((r.unread || 0) === (X.unread || 0)) return;
+        X.unread = r.unread || 0;
+        document.querySelectorAll('.side-bell').forEach((bell) => { bell.outerHTML = X.sidebarBell(); });
+      }).catch(() => {});
+    }
   };
   X.load = async (view) => { if (X.loaders[view]) await X.loaders[view](); };
 
@@ -243,7 +283,7 @@
         <div class="stat-card warn"><div class="stat-label">Outstanding today</div><div class="stat-value">${money(t.outstanding)}</div></div>
         <div class="stat-card warn"><div class="stat-label">Overdue today</div><div class="stat-value">${money(t.overdue)}</div></div>
       </div>
-      ${card('Month by month', table(['Month', 'Billed', 'Collected', 'Received', 'Expenses', ''], trendRows))}
+      ${card('Month by month', table(['Month', 'Billed', 'Collected', 'Received', 'Expenses', ''], trendRows, { cls: 'month-table' }))}
       ${card('By property', table(['Property', 'Billed', 'Received', 'Expenses', 'Net', 'Outstanding now'], f.byProperty.map((p) => [h(p.name), money(p.billed), money(p.received), money(p.expenses), money(p.net), money(p.outstanding)])))}
       ${card(`Tenant balances <small>${balances.length}</small>`, table(['Tenant', 'Room', 'Outstanding', 'Overdue', 'Credit', ''], balances.map((b) => [
         h(b.name) + (b.active ? '' : ' <small class="muted">(moved out)</small>'), `${h(b.buildingName)} ${h(b.roomLabel)}`, money(b.outstanding), b.overdue ? `<b class="is-due">${money(b.overdue)}</b>` : money(0), money(b.credit),
@@ -261,7 +301,7 @@
   const financeTabs = () => `<div class="tab-row">${[['overview', 'Overview'], ['bills', 'Make bills']].map(([k, t]) => `<button class="tab-btn ${s.finance.tab === k ? 'active' : ''}" data-action="set-state" data-key="finance.tab" data-value="${k}">${t}</button>`).join('')}</div>`;
   const floorName = (n) => (Number(n) === 0 ? 'Ground floor' : `Floor ${n}`);
   const BILL_TYPES = [['rent', 'Rent'], ['electricity', 'Electricity'], ['gas', 'Gas'], ['other', 'Other charges']];
-  const canShareFiles = (() => { try { return Boolean(navigator.canShare && navigator.canShare({ files: [new File(['%PDF'], 'bill.pdf', { type: 'application/pdf' })] })); } catch { return false; } })();
+  const canShareFiles = (() => { try { return nativeFiles() || Boolean(navigator.canShare && navigator.canShare({ files: [new File(['%PDF'], 'bill.pdf', { type: 'application/pdf' })] })); } catch { return false; } })();
   async function loadBills() {
     const b = s.finance.bill;
     [d.bills, d.org] = await Promise.all([
@@ -373,11 +413,12 @@
   }
   X.actions['bills-pdf'] = async (el) => {
     const { blob, name } = await fetchBillsPdf(billRequest(el.dataset.key));
-    saveBlob(blob, name);
+    await saveBlob(blob, name);
     return false;
   };
   X.actions['bills-share'] = async (el) => {
     const { blob, name } = await fetchBillsPdf(billRequest(el.dataset.key));
+    if (nativeFiles()) { await shareNative(blob, name); return false; }
     try {
       await navigator.share({ files: [new File([blob], name, { type: 'application/pdf' })], title: name.replace(/\.pdf$/, '') });
     } catch (err) {
@@ -444,7 +485,7 @@
         isOwner() && !c.paid ? `<button class="btn small danger" data-toggle-form="void-${c.id}">Void</button>` : '',
         c.receipt ? `<button class="btn small secondary" data-action="open-doc" data-id="${c.receipt.id}">Proof (${h(c.receipt.reviewStatus)})</button>` : '',
       ].join('');
-      return [`${h(c.label)}${c.description && c.kind !== 'rent' ? `<br><small class="muted">${h(c.description)}</small>` : ''}`, h(c.tenantName || '—'), `${h(c.buildingName)} ${h(c.roomLabel)}`, h(c.dueDate || '—'), money(c.amount), money(c.paid), `<b>${money(c.outstanding)}</b>`, stamp(c.status), `<div class="row-actions">${acts}</div>${forms.join('')}`];
+      return [`${h(c.label)}${c.description && c.kind !== 'rent' ? `<br><small class="muted">${h(c.description)}</small>` : ''}`, h(c.tenantName || '—'), `${h(c.buildingName)} ${h(c.roomLabel)}`, h(c.dueDate || '—'), money(c.amount), c.paid ? money(c.paid) : '—', `<b>${money(c.outstanding)}</b>`, stamp(c.status), `<div class="row-actions">${acts}</div>${forms.join('')}`];
     });
     const proofs = (d.charges || []).filter((c) => c.receipt && c.receipt.reviewStatus === 'unverified');
     const proofCard = proofs.length && can('payments.record') ? card(`Proofs to review <small>${proofs.length}</small>`, table(['Bill', 'Tenant', 'Outstanding', 'Proof', ''], proofs.map((c) => [h(c.label), h(c.tenantName), money(c.outstanding), `<button class="btn small secondary" data-action="open-doc" data-id="${c.receipt.id}">View</button>`,
@@ -459,9 +500,9 @@
         !p.reversed && p.unallocated > 0 && can('payments.record') ? `<button class="btn small secondary" data-action="apply-credit" data-id="${p.id}">Apply credit</button>` : '',
         !p.reversed && isOwner() ? `<button class="btn small danger" data-toggle-form="reverse-${p.id}">Reverse</button>` : '',
       ].join('');
-      return [h(p.receivedOn), h(p.tenantName || '—'), h(p.roomLabel), money(p.amount), h(label(p.method)), h(p.reference || ''), stamp(p.verification), p.unallocated ? money(p.unallocated) : '—', p.reversed ? `${stamp('void')}<br><small>${h(p.reversalReason)}</small>` : '', `<div class="row-actions">${acts}</div>${form}`];
+      return [h(p.receivedOn), h(p.tenantName || '—'), h(p.roomLabel), money(p.amount), h(label(p.method)), h(p.reference || ''), p.verification === 'verified' ? stamp('verified') : '—', p.unallocated ? money(p.unallocated) : '—', p.reversed ? `${stamp('void')}<br><small>${h(p.reversalReason)}</small>` : '', `<div class="row-actions">${acts}</div>${form}`];
     });
-    return card('', table(['Date', 'Tenant', 'Room', 'Amount', 'Method', 'Reference', 'Check', 'Credit', 'Reversed', ''], rows, { emptyText: 'No payments recorded yet.' }));
+    return card('', table(['Date', 'Tenant', 'Room', 'Amount', 'Method', 'Reference', 'Verified', 'Credit', 'Reversed', ''], rows, { emptyText: 'No payments recorded yet.' }));
   }
   X.submits['record-payment'] = async (data) => {
     const r = await api('POST', '/api/ledger/payments', { tenantId: data.tenantId, amount: data.amount, method: data.method, receivedOn: data.receivedOn, reference: data.reference, notes: data.notes, idempotencyKey: data.idempotencyKey, allocate: data.autoApply === 'on' });
@@ -622,14 +663,21 @@
     if (r.tab === 'preview') d.preview = await api('GET', `/api/reminders/preview${qs({ kind: r.previewKind })}`);
     if (r.tab === 'templates') d.templates = await api('GET', '/api/reminders/templates');
   };
+  // Templates are shown the way a tenant would read them, with example details
+  // highlighted, instead of raw {{tenantName}} codes.
+  const SAMPLE = { tenantName: 'Asha', amount: '12,000', dueDate: '5 Oct 2026', bill: 'Rent Oct 2026', bills: 'Rent Sep 2026, Rent Oct 2026', daysOverdue: '3', property: 'Shri Geeta Sadan', unit: 'Room 101', endDate: '31 Dec 2026', daysLeft: '30', title: 'Leaking tap', status: 'In progress', comment: 'Plumber visits tomorrow', date: '3 Oct 2026' };
+  const sampleText = (text) => h(text || '').replace(/\{\{\s*(\w+)\s*\}\}/g, (m, k) => `<mark class="tpl-fill">${h(k === 'ownerName' ? (session?.user?.name || 'Owner') : (SAMPLE[k] ?? k))}</mark>`);
   X.views.reminders = () => {
     const r = s.reminders;
     const st = d.remSettings || { settings: {}, channels: {} };
     const sim = st.mode === 'simulate';
-    const channelInfo = Object.entries(st.channels || {}).map(([k, c]) => `<span class="chip ${c.configured ? 'ok' : ''}">${h(label(k === 'inapp' ? 'in-app' : k))}: ${k === 'inapp' ? 'ready' : c.configured ? (sim ? 'set up (preview mode)' : 'live') : 'not set up'}</span>`).join(' ');
+    // Each channel's chip says whether it is actually used, not just whether the server could use it.
+    const used = st.settings?.channels || ['inapp'];
+    const chipState = (k, c) => (k !== 'inapp' && !c.configured ? 'not set up' : !used.includes(k) ? 'off' : k !== 'inapp' && sim ? 'preview only' : 'on');
+    const channelInfo = Object.entries(st.channels || {}).map(([k, c]) => `<span class="chip ${chipState(k, c) === 'on' ? 'ok' : ''}">${h(label(k === 'inapp' ? 'in-app' : k))}: ${chipState(k, c)}</span>`).join(' ');
     // One line on every tab; which channels are set up is shown on the Settings tab.
     const banner = `<div class="notice ${sim ? 'warn' : ''}">${sim ? '<b>Preview mode:</b> only in-app messages are really delivered.' : '<b>Live:</b> approved messages are sent.'}</div>`;
-    const tabs = `<div class="tab-row">${[['outbox', 'Outbox'], ['preview', 'Preview & draft'], ['templates', 'Templates'], ['settings', 'Settings']].map(([k, t]) => `<button class="tab-btn ${r.tab === k ? 'active' : ''}" data-action="set-state" data-key="reminders.tab" data-value="${k}">${t}</button>`).join('')}</div>`;
+    const tabs = `<div class="tab-row">${[['outbox', 'Outbox'], ['preview', 'Prepare'], ['templates', 'Templates'], ['settings', 'Settings']].map(([k, t]) => `<button class="tab-btn ${r.tab === k ? 'active' : ''}" data-action="set-state" data-key="reminders.tab" data-value="${k}">${t}</button>`).join('')}</div>`;
     let body = '';
     if (r.tab === 'outbox') {
       const msgs = d.outbox || [];
@@ -642,7 +690,7 @@
           state.forms[`editmsg-${m.id}`] ? `<textarea name="body-${m.id}" rows="4" maxlength="1000">${h(m.body)}</textarea><button class="btn small" type="button" data-action="outbox-save" data-id="${m.id}">Save text</button>` : `<b>${h(m.subject || '')}</b><div class="msg-body">${h(m.body)}</div>`,
           stamp(m.status) + (m.lastError ? `<div class="flag">${h(m.lastError)}</div>` : '') + (m.attempts ? `<small class="muted">${m.attempts} attempt(s)</small>` : ''),
           `<div class="row-actions">${m.status === 'draft' ? `<button class="btn small secondary" type="button" data-toggle-form="editmsg-${m.id}">Edit</button>` : ''}${['draft', 'queued'].includes(m.status) ? `<button class="btn small secondary" type="button" data-action="outbox-cancel" data-id="${m.id}">Cancel</button>` : ''}${m.status === 'failed' ? `<button class="btn small" type="button" data-action="outbox-retry" data-id="${m.id}">Retry</button>` : ''}</div>`,
-        ]), { emptyText: 'No messages. Use “Preview & draft” to prepare reminders.' }))}</form>`;
+        ]), { emptyText: 'No messages. Use “Prepare” to make reminders.' }))}</form>`;
     } else if (r.tab === 'preview') {
       const p = d.preview || [];
       body = `<div class="card filter-bar"><div class="form-grid cols-3">${field('Reminder type', `<select data-ext-change="state" data-key="reminders.previewKind">${[['overdue', 'Overdue rent'], ['upcoming', 'Upcoming / due today'], ['lease_expiry', 'Lease ending'], ['all', 'All']].map(([v, t]) => opt(v, t, r.previewKind)).join('')}</select>`)}<div class="form-actions"><button class="btn" data-action="reminders-draft">Create drafts</button></div></div></div>
@@ -651,8 +699,8 @@
       body = (d.templates || []).map((t) => {
         const key = `tpl-${t.key}-${t.language}`;
         return card(`${h(TPL[t.key] || t.key)} <small>${t.language === 'hi' ? 'हिन्दी' : 'English'}${t.customised ? ' · customised' : ''}</small>`, state.forms[key]
-          ? `<form data-submit="template-save" data-key="${t.key}" data-lang="${t.language}"><div class="form-grid">${field('Subject', `<input name="subject" maxlength="200" value="${h(t.subject)}">`, '1 / -1')}${field('Message', `<textarea name="body" rows="4" maxlength="1000" required>${h(t.body)}</textarea>`, '1 / -1')}</div><p class="profile-note">Placeholders: {tenantName} {amount} {dueDate} {bill} {bills} {daysOverdue} {property} {unit} {ownerName} {endDate} {daysLeft}</p><div class="form-actions"><button class="btn small" type="submit">Save</button>${t.customised ? `<button class="btn small secondary" type="button" data-action="template-reset" data-key="${t.key}" data-lang="${t.language}">Restore default</button>` : ''}<button class="btn small secondary" type="button" data-toggle-form="${key}">Cancel</button></div></form>`
-          : `<p class="msg-body" ${t.language === 'hi' ? 'lang="hi"' : ''}><b>${h(t.subject)}</b><br>${h(t.body)}</p><button class="btn small secondary" data-toggle-form="${key}">Edit</button>`);
+          ? `<form data-submit="template-save" data-key="${t.key}" data-lang="${t.language}"><div class="form-grid">${field('Subject', `<input name="subject" maxlength="200" value="${h(t.subject)}">`, '1 / -1')}${field('Message', `<textarea name="body" rows="4" maxlength="1000" required>${h(t.body)}</textarea>`, '1 / -1')}</div><p class="profile-note">Words in double braces are filled in for each tenant: {{tenantName}} {{amount}} {{dueDate}} {{bill}} {{bills}} {{daysOverdue}} {{property}} {{unit}} {{ownerName}} {{endDate}} {{daysLeft}}</p><div class="form-actions"><button class="btn small" type="submit">Save</button>${t.customised ? `<button class="btn small secondary" type="button" data-action="template-reset" data-key="${t.key}" data-lang="${t.language}">Restore default</button>` : ''}<button class="btn small secondary" type="button" data-toggle-form="${key}">Cancel</button></div></form>`
+          : `<p class="tpl-example-label">How it reads (example)</p><p class="msg-body tpl-example" ${t.language === 'hi' ? 'lang="hi"' : ''} data-no-i18n><b>${sampleText(t.subject)}</b><br>${sampleText(t.body)}</p><button class="btn small secondary" data-toggle-form="${key}">Edit</button>`);
       }).join('');
     } else {
       const c = st.settings || {};
@@ -876,6 +924,8 @@
       tbl.querySelectorAll(':scope > tbody > tr').forEach((tr) => {
         [...tr.children].forEach((td, i) => {
           if (!td.hasAttribute('data-label')) td.setAttribute('data-label', heads[i] || '');
+          // Empty values ("—") are left out of phone cards so each card stays short.
+          if (i > 0 && /^[—–-]?$/.test(td.textContent.trim()) && !td.querySelector('input, select, button, img, form')) td.classList.add('cell-empty');
           if (td.querySelector(':scope > .row-actions > .more-menu, :scope > .more-menu') && !td.querySelector('.row-actions > button')) td.classList.add('cell-menu');
         });
       });

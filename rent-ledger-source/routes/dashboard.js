@@ -24,12 +24,20 @@ function register(app, { db, todayFor }) {
         return { roomId: r.id, roomLabel: r.label, buildingName: building?.name || "", meterId: r.gas_meter_id, authorityName: authority?.name || "Unknown authority", billUrl: authority?.bill_url || "", tenantId: tenant?.id || null, tenantName: tenant?.name || "" };
       });
     const occupied = rooms.filter((r) => r.status === "occupied").length;
+    // Money actually received this month, whichever month's bills it paid
+    // (deposit adjustments and reversed payments are not new money).
+    const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+    const monthEnd = `${year}-${String(month).padStart(2, "0")}-31`;
+    const received = db.get(`SELECT COALESCE(SUM(p.amount_paise), 0) AS n FROM payments p
+      WHERE p.org_id = ? AND p.received_on BETWEEN ? AND ? AND p.method <> 'deposit_adjustment'
+        AND NOT EXISTS (SELECT 1 FROM payment_reversals r WHERE r.payment_id = p.id)`, req.orgId, monthStart, monthEnd).n;
     res.json({
       totalBuildings: db.get("SELECT COUNT(*) AS n FROM buildings WHERE org_id = ? AND status = 'active'", req.orgId).n,
       totalRooms: rooms.length,
       occupiedRooms: occupied,
       vacantRooms: rooms.length - occupied,
       month, year,
+      receivedThisMonth: toRupees(received),
       rentCollected: toRupees(sum(of(thisMonth, "rent"), "paid_paise")),
       rentPending: toRupees(sum(of(thisMonth, "rent"), "outstanding_paise")),
       elecCollected: toRupees(sum(of(thisMonth, "electricity"), "paid_paise")),

@@ -4,7 +4,7 @@
 const crypto = require("node:crypto");
 const ledger = require("./ledger");
 const { toRupees } = require("../lib/money");
-const { PdfDocument, wrap } = require("./billpdf");
+const { PdfDocument, wrap, ready: pdfReady } = require("./billpdf");
 
 const BILL_KINDS = { rent: ["rent"], electricity: ["electricity"], gas: ["gas"], other: ["maintenance", "late_fee", "damage", "other"] };
 const DEFAULT_KINDS = ["rent", "electricity"];
@@ -105,7 +105,7 @@ function chargeDetail(c) {
   const d = c.details || {};
   if (c.kind === "electricity" && (d.currReading || d.prevReading)) {
     const n = (v) => Number(v || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
-    return `Meter ${n(d.prevReading)} to ${n(d.currReading)} = ${n(d.unitsConsumed ?? Math.max((d.currReading || 0) - (d.prevReading || 0), 0))} units × Rs. ${Number(d.ratePerUnit || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `Meter ${n(d.prevReading)} to ${n(d.currReading)} = ${n(d.unitsConsumed ?? Math.max((d.currReading || 0) - (d.prevReading || 0), 0))} units × ₹${Number(d.ratePerUnit || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
   if (c.kind === "gas" && d.meterId) return `Gas meter ${d.meterId}${d.authorityName ? ` · ${d.authorityName}` : ""}`;
   return "";
@@ -134,7 +134,7 @@ const COLORS = {
 
 function rs(paise) {
   const r = toRupees(paise);
-  return `Rs. ${r.toLocaleString("en-IN", { minimumFractionDigits: paise % 100 ? 2 : 0, maximumFractionDigits: 2 })}`;
+  return `₹${r.toLocaleString("en-IN", { minimumFractionDigits: paise % 100 ? 2 : 0, maximumFractionDigits: 2 })}`;
 }
 function niceDate(iso) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ""));
@@ -268,4 +268,4 @@ function renderBillsPdf({ orgName, bills, today, paymentDetails = "" }) {
   return doc.toBuffer();
 }
 
-module.exports = { BILL_KINDS, DEFAULT_KINDS, parseFilters, collectBills, billView, renderBillsPdf, floorName, roomName };
+module.exports = { pdfReady, BILL_KINDS, DEFAULT_KINDS, parseFilters, collectBills, billView, renderBillsPdf, floorName, roomName };

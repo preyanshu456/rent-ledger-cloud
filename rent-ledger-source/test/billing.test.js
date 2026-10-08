@@ -13,6 +13,7 @@ let ravi;
 
 // Pending rent/electricity in two rooms on two floors; one room has a tenant who moved out.
 before(async () => {
+  await billing.pdfReady; // the Hindi font is ready before any PDF is made
   ctx = await startServer();
   world = await seedOwnerWorld(ctx);
   const { owner, building, room, tenant } = world;
@@ -120,9 +121,12 @@ test("PDF: one page per bill, readable structure, the amounts on it", async () =
   const buf = Buffer.from(await res.arrayBuffer());
   assert.equal(checkPdfStructure(buf), 2);
   const text = pdfText(buf);
-  for (const s of ["(Ravi Kumar)", "(Asha)", "(Rs. 8,875)", "(Rs. 10,600)", "(Already paid in advance)", "(Overdue \x96 please pay now)", "(Meter 1,200 to 1,275 = 75 units \xD7 Rs. 8.00)", "(Room 1A \xB7 Floor 1)", "(Room G1 \xB7 Ground floor)"]) {
+  // Amounts are "₹" (drawn with the embedded font) followed by the figure.
+  for (const s of ["(Ravi Kumar)", "(Asha)", "(8,875)", "(10,600)", "(Already paid in advance)", "(Overdue \x96 please pay now)", "(Meter 1,200 to 1,275 = 75 units \xD7 )", "(8.00)", "(Room 1A \xB7 Floor 1)", "(Room G1 \xB7 Ground floor)"]) {
     assert.ok(text.includes(s), `PDF shows ${s}`);
   }
+  assert.ok(!text.includes("Rs."), "no Rs. fallback");
+  assert.match(text, /<20B9>/, "the rupee sign can be copied from the PDF");
 });
 
 test("PDF: chosen bills only, payment details from Settings, audit entry", async () => {
@@ -164,9 +168,11 @@ test("long bills continue on a second page", () => {
 });
 
 test("text helpers: rupee sign, other scripts, wrapping", () => {
-  assert.equal(encode("₹500"), "Rs. 500");
+  assert.equal(encode("₹500"), "₹500");
   assert.equal(encode("Café – ok"), "Caf\xE9 \x96 ok");
-  assert.equal(encode("राम"), "???");
+  assert.equal(encode("राम"), "राम");
+  assert.equal(encode("தமிழ்"), "?????", "scripts without a font are replaced");
+  assert.ok(widthOf("राम", 10) > 10 && widthOf("राम", 10) < 30);
   const lines = wrap("Pay by UPI to sunrise@upi or by bank transfer to account 1234567890", 120, 10);
   assert.ok(lines.length > 1);
   assert.ok(lines.every((l) => widthOf(l, 10) <= 120));
@@ -175,4 +181,20 @@ test("text helpers: rupee sign, other scripts, wrapping", () => {
   assert.deepEqual(billing.parseFilters({}).kinds, ["rent", "electricity"]);
   assert.equal(billing.roomName("101"), "Room 101");
   assert.equal(billing.roomName("Flat 2B"), "Flat 2B");
+});
+
+test("PDF: Hindi names, addresses and notes are drawn, not replaced with ???", async () => {
+  const lines = [{ id: "1", kind: "rent", title: "Rent", period: "Sep 2026", dueDate: "2026-09-05", overdue: true, amountPaise: 1200000, paidPaise: 0, pendingPaise: 1200000, detail: "" }];
+  const bill = { key: "r:t", ref: "B-2610-HINDI1", buildingName: "श्री गीता सदन", buildingAddress: "सेक्टर 62, नोएडा", floor: 1, roomLabel: "101", roomStatus: "occupied", tenantName: "आशा वर्मा", tenantMobile: "", tenantActive: true, lines, byKind: { rent: 1200000 }, pendingPaise: 1200000, creditPaise: 0, payablePaise: 1200000, overdue: true, dueBy: "2026-09-05" };
+  const buf = billing.renderBillsPdf({ orgName: "शर्मा रेंटल्स", bills: [bill], today: "2026-10-08", paymentDetails: "कृपया 10 तारीख़ तक भुगतान करें।" });
+  assert.equal(checkPdfStructure(buf), 1);
+  const raw = buf.toString("latin1");
+  assert.match(raw, /\/Subtype \/Type0 \/BaseFont \/RLBDVA\+NotoSansDevanagari-Regular \/Encoding \/Identity-H/);
+  assert.match(raw, /\/FontFile2 \d+ 0 R/);
+  const text = pdfText(buf);
+  assert.ok(!text.includes("(???"), "no question marks");
+  // Glyphs are mapped back to the Hindi text (here: आ of आशा, and श्री as one cluster).
+  assert.match(text, /<[0-9A-F]{4}> <0906>/);
+  assert.match(text, /<[0-9A-F]{4}> <0936094D09300940>/);
+  assert.ok(buf.length < 60000, `subset fonts keep the file small (${buf.length} bytes)`);
 });

@@ -141,7 +141,14 @@ async function requestAppInstall() {
   deferredInstallPrompt = null;
   document.getElementById('install-app-button')?.remove();
 }
-function apiBase() { return isMobileApp ? (localStorage.getItem('rentLedgerApiBase') || '') : ''; }
+// The Android and iPhone apps carry the screens inside the app and talk to
+// the live server. (A different server can still be set for testing by
+// saving 'rentLedgerApiBase' in the app's storage.)
+const DEFAULT_API_BASE = 'https://rent-ledger.up.railway.app';
+function apiBase() {
+  if (!isMobileApp) return '';
+  try { return localStorage.getItem('rentLedgerApiBase') || DEFAULT_API_BASE; } catch { return DEFAULT_API_BASE; }
+}
 function apiUrl(url) { return apiBase() ? apiBase().replace(/\/$/, '') + url : url; }
 
 const cache = { buildings: [], rooms: [], tenants: [], authorities: [], dashboard: null, rent: [], electricity: [], gas: [], payments: [], buildingRent: [], profile: null, tenantPortal: null, tenantProfile: null, coreLoadedAt: 0, tenantLoadedAt: 0 };
@@ -150,7 +157,6 @@ const MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep
 
 // ---------- API helpers ----------
 async function api(method, url, body) {
-  if (isMobileApp && !apiBase()) throw new Error('Enter your Mac’s Wi-Fi address below and tap “Save server address” before signing in.');
   const res = await fetch(apiUrl(url), {
     method,
     headers: { ...(body ? { "Content-Type": "application/json" } : {}), ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}) },
@@ -194,6 +200,8 @@ async function uploadReceipt(kind, entryId, file) {
 }
 
 async function openReceipt(receiptId) {
+  // In the Android / iPhone app the file goes to the phone's share sheet / viewer.
+  if (isMobileApp && window.RL_EXT?.helpers?.openAuthed) return RL_EXT.helpers.openAuthed(`/api/receipts/${receiptId}`);
   const res = await fetch(apiUrl(`/api/receipts/${receiptId}`), { headers: { Authorization: `Bearer ${session?.token || ''}` } });
   if (!res.ok) {
     const data = await res.json().catch(() => ({ error: 'Unable to open receipt' }));
@@ -345,26 +353,6 @@ function formKey(form) {
   return [form.dataset.submit, form.dataset.id, form.dataset.roomId, form.dataset.authorityId].join("|");
 }
 
-// Counts ₹ amounts and plain numbers up from zero when a page first opens.
-function countUp(el) {
-  const text = el.textContent.trim();
-  const match = /^(₹)?(\d[\d,]*(?:\.\d+)?)$/.exec(text);
-  if (!match) return;
-  const target = Number(match[2].replace(/,/g, ""));
-  if (!target) return;
-  const decimals = (match[2].split(".")[1] || "").length;
-  const format = (v) => (match[1] || "") + v.toLocaleString("en-IN", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
-  const start = performance.now();
-  const duration = 750;
-  const step = (now) => {
-    const t = Math.min(1, (now - start) / duration);
-    const eased = 1 - Math.pow(1 - t, 3);
-    el.textContent = format(t < 1 ? Math.round(target * eased * 10 ** decimals) / 10 ** decimals : target);
-    if (t < 1) requestAnimationFrame(step);
-  };
-  el.textContent = format(0);
-  requestAnimationFrame(step);
-}
 
 // Sliding underline for the room tabs; glides from the previous tab when switching.
 function placeTabIndicator(root, animateFromPrevious) {
@@ -449,7 +437,6 @@ function paint(html, { pageChanged, tabChanged, after, sideHtml, mainHtml, extra
       if (!useTransition) main.classList.add("page-enter");
       main.classList.add("is-entering");
       setTimeout(() => main.classList.remove("is-entering"), 900);
-      app.querySelectorAll(".stat-card .stat-value, .tenant-hero strong, .pay-all-card strong").forEach(countUp);
     }
     if (tabChanged && animate) app.querySelector(".tab-panel")?.classList.add("tab-enter");
     // Translate now (not after this frame) so the tab underline fits the Hindi labels.
@@ -497,7 +484,9 @@ function paint(html, { pageChanged, tabChanged, after, sideHtml, mainHtml, extra
 // ---------- formatting ----------
 function fmtMoney(n) {
   const v = Number(n) || 0;
-  return "₹" + v.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+  // Whole rupees stay whole (₹12,000); anything with paise always shows two digits (₹30,442.10).
+  const whole = Math.abs(Math.round(v * 100)) % 100 === 0;
+  return "₹" + v.toLocaleString("en-IN", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: whole ? 0 : 2 });
 }
 // The local calendar date (YYYY-MM-DD). toISOString() alone gives the UTC date,
 // which is yesterday's date in India before 05:30.
@@ -507,9 +496,12 @@ function esc(s) {
 }
 
 // ---------- data loading ----------
-function invalidateData() { cache.coreLoadedAt = 0; cache.tenantLoadedAt = 0; }
+// After any change (save, delete, payment…) everything is fetched fresh.
+// Between changes, pages open straight away from what was loaded last time
+// and refresh in the background, so taps don't wait on the network.
+function invalidateData() { cache.coreLoadedAt = 0; cache.tenantLoadedAt = 0; ui.dataEpoch = (ui.dataEpoch || 0) + 1; }
 async function loadCore() {
-  if (cache.coreLoadedAt && Date.now() - cache.coreLoadedAt < 4_000) return;
+  if (cache.coreLoadedAt && Date.now() - cache.coreLoadedAt < 60_000) return;
   const [buildings, rooms, tenants, authorities] = await Promise.all([
     api("GET", "/api/buildings"),
     api("GET", "/api/rooms"),
@@ -524,13 +516,47 @@ async function loadCore() {
 }
 
 // ---------- render dispatch ----------
+// ---------- back button (Android phones, browsers) ----------
+// Each page opened is added to the history, so the phone's Back button goes
+// to the previous page (closing the More panel or a dialog first) instead of
+// leaving the app.
+const navHistory = { applying: false, started: false };
+function pageSnapshot() {
+  return { view: state.view, buildingId: state.buildingId, roomId: state.roomId, roomTab: state.roomTab, params: state.params, tenantView: state.tenantView };
+}
+function rememberPage() {
+  if (!session) return;
+  const entry = { rl: pageSnapshot() };
+  try {
+    if (navHistory.applying) return;
+    if (!navHistory.started) { history.replaceState(entry, ''); navHistory.started = true; }
+    else history.pushState(entry, '');
+  } catch {}
+}
+addEventListener('popstate', (event) => {
+  const sheet = document.querySelector('.msheet:not([hidden])');
+  const dialog = document.querySelector('.confirm-backdrop [data-confirm="no"]');
+  if (sheet || dialog) {
+    if (sheet) { sheet.hidden = true; document.body.classList.remove('sheet-open'); }
+    if (dialog) dialog.click();
+    try { history.pushState({ rl: pageSnapshot() }, ''); } catch {}
+    return;
+  }
+  const snap = event.state?.rl;
+  if (!snap || !session) return;
+  Object.assign(state, snap);
+  state.forms = {};
+  navHistory.applying = true;
+  Promise.resolve(render()).finally(() => { navHistory.applying = false; });
+});
+
 async function render() {
   const seq = ++ui.renderSeq;
   const pageKey = currentPageKey();
   const tabKey = `${pageKey}:${state.roomTab}`;
   const pageChanged = pageKey !== ui.pageKey;
   const tabChanged = !pageChanged && tabKey !== ui.tabKey;
-  const settle = () => { ui.pageKey = pageKey; ui.tabKey = tabKey; };
+  const settle = () => { ui.pageKey = pageKey; ui.tabKey = tabKey; if (pageChanged) rememberPage(); };
 
   if (!session) {
     document.getElementById('app').innerHTML = renderAuth();
@@ -560,34 +586,64 @@ async function render() {
     return;
   }
   if (!ui.mounted) paintSkeleton('owner');
+  const loadKey = pageKey;
+  const epoch = ui.dataEpoch || 0;
+  // A page seen before (and nothing changed since) opens instantly from
+  // memory; fresh data follows a moment later.
+  const cached = pageChanged && ui.mounted && ui.loaded?.[loadKey] === epoch && cache.coreLoadedAt;
+  if (cached) paintOwner(pageChanged, tabChanged);
+  else if (pageChanged && ui.mounted) paintMainSkeleton();
   progressStart();
   try {
-    await loadCore();
-    if (window.RL_EXT) await RL_EXT.beforeOwnerRender();
-    if (state.view === 'profile' && !cache.profile) cache.profile = await api('GET', '/api/account/profile');
-    if (state.view === "dashboard") [cache.dashboard, cache.payments] = await Promise.all([api("GET", "/api/dashboard"), api("GET", "/api/payments?limit=8"), window.RL_EXT?.loadDashboardExtras()]);
-    if (window.RL_EXT?.views[state.view]) await RL_EXT.load(state.view);
-    if (state.view === "building" && state.buildingId) cache.buildingRent = await api("GET", `/api/rent?buildingId=${state.buildingId}`);
-    if (state.view === "room" && state.roomId) {
-      const [rent, electricity, gas] = await Promise.all([
-        api("GET", `/api/rent?roomId=${state.roomId}`),
-        api("GET", `/api/electricity?roomId=${state.roomId}`),
-        api("GET", `/api/gas?roomId=${state.roomId}`),
-      ]);
-      cache.rent = rent.sort((a, b) => b.year - a.year || b.month - a.month);
-      cache.electricity = electricity.sort((a, b) => b.year - a.year || b.month - a.month);
-      cache.gas = gas.sort((a, b) => b.year - a.year || b.month - a.month);
-    }
+    await loadOwnerData();
+    ui.loaded = { ...(ui.loaded || {}), [loadKey]: ui.dataEpoch || 0 };
   } catch (e) {
     toast(e.message, true);
   }
   progressDone();
   if (seq !== ui.renderSeq) return;
+  paintOwner(cached ? false : pageChanged, cached ? false : tabChanged);
+  settle();
+}
+
+// Everything a page needs, fetched at the same time rather than one after another.
+async function loadOwnerData() {
+  const jobs = [loadCore()];
+  if (window.RL_EXT) jobs.push(RL_EXT.beforeOwnerRender());
+  if (state.view === 'profile') jobs.push(api('GET', '/api/account/profile').then((p) => { cache.profile = p; }));
+  if (state.view === "dashboard") jobs.push(Promise.all([api("GET", "/api/dashboard"), api("GET", "/api/payments?limit=8"), window.RL_EXT?.loadDashboardExtras()]).then(([dash, payments]) => { cache.dashboard = dash; cache.payments = payments; }));
+  if (window.RL_EXT?.views[state.view]) jobs.push(RL_EXT.load(state.view));
+  if (state.view === "building" && state.buildingId) jobs.push(api("GET", `/api/rent?buildingId=${state.buildingId}`).then((r) => { cache.buildingRent = r; }));
+  if (state.view === "room" && state.roomId) {
+    jobs.push(Promise.all([
+      api("GET", `/api/rent?roomId=${state.roomId}`),
+      api("GET", `/api/electricity?roomId=${state.roomId}`),
+      api("GET", `/api/gas?roomId=${state.roomId}`),
+    ]).then(([rent, electricity, gas]) => {
+      cache.rent = rent.sort((a, b) => b.year - a.year || b.month - a.month);
+      cache.electricity = electricity.sort((a, b) => b.year - a.year || b.month - a.month);
+      cache.gas = gas.sort((a, b) => b.year - a.year || b.month - a.month);
+    }));
+  }
+  await Promise.all(jobs);
+}
+
+function paintOwner(pageChanged, tabChanged) {
   const sideHtml = renderSidebar();
   const mainHtml = `<div class="main">${renderMain()}</div>`;
   const extraHtml = window.RL_EXT?.mobileNav ? RL_EXT.mobileNav() : "";
   paint(sideHtml + mainHtml + extraHtml, { pageChanged, tabChanged, sideHtml, mainHtml, extraHtml, after: () => { attachHandlers(); window.RL_EXT?.afterRender?.(); } });
-  settle();
+}
+
+// While a new page loads for the first time: keep the bars, show a placeholder.
+function paintMainSkeleton() {
+  const main = document.querySelector("#app > .main");
+  if (!main) return;
+  const sk = (w, h, radius = 10) => `<span class="sk" style="width:${w};height:${h};border-radius:${radius}px"></span>`;
+  main.setAttribute("aria-busy", "true");
+  main.innerHTML = `<span class="sr-only">Loading…</span><div class="sk-stack">${sk("200px", "34px")}${sk("240px", "12px")}</div><div class="sk-block">${sk("100%", "120px", 16)}</div><div class="sk-block">${sk("100%", "220px", 16)}</div>`;
+  const scroller = ["auto", "scroll"].includes(getComputedStyle(document.body).overflowY) ? document.body : (document.scrollingElement || document.documentElement);
+  scroller.scrollTo({ top: 0, left: 0, behavior: "instant" });
 }
 
 function loginMarkup(role = 'owner') {
@@ -595,7 +651,7 @@ function loginMarkup(role = 'owner') {
 }
 
 function renderAuth() {
-  const serverSetup = isMobileApp ? `<form class="server-setup" data-server-url><label>Mac server address<input name="serverUrl" required value="${esc(apiBase())}" placeholder="http://192.168.1.20:4000"></label><button class="link-btn">Save server address</button><small>Connect your phone and Mac to the same Wi-Fi.</small></form>` : '';
+  const serverSetup = '';
   const installGuide = isMobileApp ? '' : `<div class="install-guide"><div><span class="install-guide-icon">⇩</span><div><strong>Use Rent Ledger like an app</strong><small>${esc(installHelpText())}</small></div></div><button type="button" data-install-app>Install app</button></div>`;
   return `<div class="auth-shell"><section class="auth-art"><div class="brand auth-brand">Rent Ledger <span class="brand-mark">HOME</span></div><div class="auth-copy"><p class="kicker">PROPERTY, SIMPLIFIED</p><h1>A calmer way to manage every key.</h1><p>Keep rent, electricity, rooms and tenant records in one considered place.</p><div class="auth-pills"><span>◈ Owner command centre</span><span>◌ Private tenant billing</span></div></div><div class="auth-foot">Made for modern rental homes</div></section><section class="auth-panel"><div class="auth-card"><div class="role-switch" data-active="owner"><button class="role-btn active" data-role="owner">Owner</button><button class="role-btn" data-role="tenant">Tenant</button></div><div id="auth-form">${loginMarkup()}</div>${installGuide}${serverSetup}</div></section></div>`;
 }
@@ -885,7 +941,9 @@ async function downloadBackup() {
 function renderOwnerProfile() {
   const p = cache.profile || { account: session.user, buildings: [] };
   const buildings = p.buildings.length ? p.buildings.map((building) => `<div class="profile-building"><div><strong>${esc(building.name)}</strong><span>${esc(building.address || 'No address on file')}</span></div><div><b>${building.occupiedRooms}/${building.rooms}</b><small>occupied · ${building.totalFloors || '—'} floors</small></div></div>`).join('') : '<p class="profile-note">No buildings added yet.</p>';
-  return `<div class="page-title">Your profile</div><div class="page-sub">Your account, buildings and security settings.</div><section class="profile-grid owner-profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Owner'], ['Member since', esc(displayDate(p.account.createdAt))]])}${passwordCard()}${backupCard()}${themePicker()}<article class="card profile-card profile-buildings"><h3>Your buildings <small>${p.buildings.length}</small></h3>${buildings}</article></section>`;
+  // Colours and language live in Settings, and buildings on Home, so Profile is just about you.
+  void buildings;
+  return `<div class="page-title">Your profile</div><div class="page-sub">Your account and security.</div><section class="profile-grid owner-profile-grid">${profileCard('Account information', [['Name', esc(p.account.name)], ['Sign-in contact', esc(p.account.contact)], ['Account type', 'Owner'], ['Member since', esc(displayDate(p.account.createdAt))]])}${passwordCard()}${backupCard()}</section><button class="btn secondary tenant-signout owner-signout" data-logout>Sign out</button>`;
 }
 
 // ---------- dashboard ----------
@@ -916,7 +974,7 @@ function renderDashboard() {
   const details = `
     <details class="card dash-details" ${state.dashDetails ? "open" : ""}>
       <summary>Show details</summary>
-      <div class="table-scroll"><table class="ledger dash-split"><thead><tr><th>This month</th><th>Collected</th><th>Still to collect</th><th>Open bills (all months)</th></tr></thead><tbody>
+      <div class="table-scroll"><table class="ledger dash-split"><thead><tr><th>This month's bills</th><th>Collected</th><th>Still to collect</th><th>Open bills (all months)</th></tr></thead><tbody>
         ${splitRow("Rent", d.rentCollected, d.rentPending, d.outstandingRentEntries)}
         ${splitRow("Electricity", d.elecCollected, d.elecPending, d.outstandingElectricityEntries)}
         ${splitRow("Gas", d.gasCollected, d.gasPending, d.outstandingGasEntries)}
@@ -930,14 +988,12 @@ function renderDashboard() {
 
     <div class="stat-grid stat-grid-4">
       <div class="stat-card good"><div class="stat-label">Rooms occupied</div><div class="stat-value">${d.occupiedRooms ?? "–"} / ${d.totalRooms ?? "–"}</div></div>
-      <div class="stat-card good"><div class="stat-label">Collected this month</div><div class="stat-value">${fmtMoney(collected)}</div></div>
+      <div class="stat-card good"><div class="stat-label">Received this month</div><div class="stat-value">${fmtMoney(d.receivedThisMonth ?? collected)}</div></div>
       <div class="stat-card warn"><div class="stat-label">Still to collect</div><div class="stat-value">${fmtMoney(pending)}</div></div>
       <div class="stat-card warn"><div class="stat-label">Overdue</div><div class="stat-value ${d.overdueTotal ? "is-due" : ""}">${fmtMoney(d.overdueTotal)}</div></div>
     </div>
 
     ${details}
-
-    ${renderGasToDoCard(d)}
 
     ${d.onlinePaymentsEnabled ? renderOnlinePaymentsCard(d) : ""}
 
@@ -984,7 +1040,7 @@ function renderBuildingView() {
     const rents = [...new Set(rentableRooms.map((room) => Number(room.monthlyRent) || 0))];
     const currentRent = rents.length === 1 ? rents[0] : '';
     const rentEditor = rentableRooms.length ? `<form data-submit="update-floor-rent" data-building-id="${b.id}" data-floor-number="${floorNumber}"><input name="monthlyRent" type="number" min="0" step="0.01" required value="${currentRent}" placeholder="Monthly rent"><button class="btn small secondary" type="submit">Update rent</button></form>` : `<span class="owner-floor-note">Owner floor · electricity only</span>`;
-    return `<div class="floor-control"><div><strong>Floor ${floorNumber}</strong><span>${floorRooms.length} room${floorRooms.length === 1 ? '' : 's'} · ${rentableRooms.length ? (rents.length === 1 ? `${fmtMoney(currentRent)}/room` : 'mixed room rents') : 'no rent collection'}</span></div>${rentEditor}<button class="btn small danger" data-action="delete-floor" data-building-id="${b.id}" data-floor-number="${floorNumber}" data-room-count="${floorRooms.length}">Delete floor</button></div>`;
+    return `<div class="floor-control"><div><strong>Floor ${floorNumber}</strong><span>${floorRooms.length} room${floorRooms.length === 1 ? '' : 's'} · ${rentableRooms.length ? (rents.length === 1 ? `${fmtMoney(currentRent)}/room` : 'mixed room rents') : 'no rent collection'}</span></div>${rentEditor}<button type="button" class="floor-delete" data-action="delete-floor" data-building-id="${b.id}" data-floor-number="${floorNumber}" data-room-count="${floorRooms.length}">Delete floor ${floorNumber}…</button></div>`;
   }).join('');
 
   const addRoomForm = state.forms.addRoom ? `
@@ -1033,8 +1089,6 @@ function renderBuildingView() {
 
     ${addRoomForm}${addOwnerFloorForm}
 
-    ${floors.length ? `<div class="card floor-manager"><h3>Floor rent settings</h3><p class="profile-note">Updating a floor rent applies the amount to every room on that floor. It does not change past ledger entries.</p>${floorControls}</div>` : ''}
-
     <div class="card">
       <h3>
         Floors &amp; rooms
@@ -1059,6 +1113,10 @@ function renderBuildingView() {
         </div>
       `}
     </div>
+
+    ${floors.length ? (state.forms.floorManager
+      ? `<div class="card floor-manager"><h3>Floor rent <button class="btn small secondary" data-toggle-form="floorManager">Done</button></h3><p class="profile-note">A new floor rent applies to every room on that floor from now on. Past bills don't change.</p>${floorControls}</div>`
+      : `<button type="button" class="btn secondary floor-manager-open" data-toggle-form="floorManager">Change floor rent or remove a floor</button>`) : ''}
 
     <div class="card">
       <h3>Building details</h3>
@@ -1375,27 +1433,6 @@ async function copyText(text) {
   toast(`Copied ${text}`);
 }
 
-// Dashboard to-do: linked gas meters with no bill entered for this month yet.
-function renderGasToDoCard(d) {
-  const rooms = d.gasBillsToEnter || [];
-  if (!rooms.length) return "";
-  const rows = rooms.map((room) => `
-    <tr>
-      <td class="text"><strong>${esc(room.roomLabel)}</strong><br><small>${esc(room.buildingName)}${room.tenantName ? ` · ${esc(room.tenantName)}` : ""}</small></td>
-      <td class="text"><span class="meter-code">${esc(room.meterId)}</span> <button type="button" class="btn small secondary" data-action="copy-text" data-text="${esc(room.meterId)}">Copy</button></td>
-      <td class="text">${room.billUrl ? `<a href="${esc(room.billUrl)}" target="_blank" rel="noopener noreferrer">${esc(authorityShortName({ name: room.authorityName }))} bill page ↗</a>` : `<small>${esc(room.authorityName)}</small>`}</td>
-      <td><input class="gas-amount-input" type="number" min="0" step="0.01" inputmode="decimal" placeholder="₹ amount" aria-label="Amount due for ${esc(room.roomLabel)}" data-room-id="${room.roomId}" data-tenant-id="${room.tenantId || ""}" /></td>
-    </tr>`).join("");
-  return `<div class="card gas-todo">
-    <h3>Gas bills to enter · ${MONTHS[d.month] || ""} ${d.year || ""} <small>${rooms.length} room${rooms.length === 1 ? "" : "s"}</small></h3>
-    <p class="profile-note">Open each supplier's bill page, look up the meter number, and type the amount due. Tenants see the dues as soon as you save. Leave a box empty to skip that room for now.</p>
-    <form data-submit="bulk-gas">
-      <div class="table-scroll"><table class="ledger gas-todo-table"><thead><tr><th>Room</th><th>Meter</th><th>Bill page</th><th>Amount due (₹)</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <div class="form-actions"><button class="btn" type="submit">Save entered bills</button></div>
-    </form>
-  </div>`;
-}
-
 function gasCard(r) {
   if (r.gasMeterId && r.gasAuthorityId) {
     const authority = cache.authorities.find((a) => a.id === r.gasAuthorityId);
@@ -1522,6 +1559,12 @@ function attachHandlers() {
     const nav = e.target.closest("[data-nav]");
     if (nav) {
       const type = nav.dataset.nav;
+      // Answer the tap straight away: light up what was tapped and close the More panel.
+      if (nav.matches(".mnav-btn, .side-link, .msheet-grid button, .msheet-row")) {
+        document.querySelectorAll(".mnav-btn.active, .side-link.active, .msheet-grid button.active").forEach((el) => el.classList.remove("active"));
+        nav.classList.add("active");
+        if (nav.closest(".msheet")) { nav.closest(".msheet").hidden = true; document.body.classList.remove("sheet-open"); }
+      }
       state.forms = {};
       if (type === "dashboard") { state.view = "dashboard"; state.buildingId = null; state.roomId = null; }
       if (type === "building") { state.view = "building"; state.buildingId = nav.dataset.id; state.roomId = null; }
@@ -1739,14 +1782,6 @@ async function handleSubmit(form) {
       const now = new Date();
       await api('POST', '/api/gas', { roomId: form.dataset.roomId, tenantId: form.dataset.tenantId || null, month: now.getMonth() + 1, year: now.getFullYear(), amount: data.amount });
       toast(`${MONTHS[now.getMonth() + 1]} gas bill saved`);
-    } else if (kind === 'bulk-gas') {
-      const now = new Date();
-      const filled = [...form.querySelectorAll('input[data-room-id]')].filter((input) => input.value.trim() !== '');
-      if (!filled.length) throw new Error('Enter the amount due for at least one room.');
-      for (const input of filled) {
-        await api('POST', '/api/gas', { roomId: input.dataset.roomId, tenantId: input.dataset.tenantId || null, month: now.getMonth() + 1, year: now.getFullYear(), amount: input.value });
-      }
-      toast(`Saved ${filled.length} gas bill${filled.length === 1 ? '' : 's'}`);
     } else if (kind === 'set-bill-url') {
       await api('PUT', `/api/authorities/${form.dataset.authorityId}`, { billUrl: data.billUrl });
       state.forms[`billUrl-${form.dataset.authorityId}`] = false;

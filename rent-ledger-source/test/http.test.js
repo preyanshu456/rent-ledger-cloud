@@ -78,3 +78,16 @@ test("online payment endpoints say payments are off when Razorpay keys are missi
   const res = await ctx.request("POST", "/api/tenant/payments/order", { token, body: { all: true } });
   assert.equal(res.status, 503);
 });
+
+test("the Android and iPhone apps may call the API from inside the app; other sites may not", async () => {
+  for (const origin of ["capacitor://localhost", "https://localhost"]) {
+    const pre = await ctx.request("OPTIONS", "/api/auth/login", { headers: { origin, "access-control-request-method": "POST" } });
+    assert.equal(pre.status, 204);
+    assert.equal(pre.headers.get("access-control-allow-origin"), origin);
+  }
+  const other = await ctx.request("OPTIONS", "/api/auth/login", { headers: { origin: "https://evil.example", "access-control-request-method": "POST" } });
+  assert.equal(other.headers.get("access-control-allow-origin"), null);
+  // A cookie-signed request from the app's origin is still refused (the apps use tokens).
+  const cookie = await ctx.request("POST", "/api/buildings", { headers: { origin: "https://localhost", cookie: "rl_session=" + "x".repeat(40) }, body: { name: "X" } });
+  assert.equal(cookie.status, 401);
+});

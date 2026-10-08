@@ -36,7 +36,9 @@ function register(app, { db, todayFor }) {
 
   // PDF: one bill (one or more pages) per room / tenant. POST so a long list
   // of chosen bills fits; nothing is changed.
-  app.post("/api/bills/pdf", requirePermission("reports.view"), (req, res) => {
+  app.post("/api/bills/pdf", requirePermission("reports.view"), async (req, res, next) => {
+    // The Hindi font loads in the background at start-up; wait for it once.
+    try { await billing.pdfReady; } catch (err) { return next(err); }
     const today = todayFor(req);
     const filters = billing.parseFilters(req.body || {});
     const { bills } = billing.collectBills(db, req.orgId, filters, today);

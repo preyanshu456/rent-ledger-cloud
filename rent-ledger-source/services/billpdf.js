@@ -1,9 +1,10 @@
-// A small PDF writer: A4 pages, the two built-in Helvetica fonts, text, lines
-// and boxes. No dependencies; the output opens in any PDF viewer or phone.
-// Text is limited to the Windows-1252 character set that every PDF reader has
-// for the built-in fonts, so "₹" is written as "Rs." and letters from other
-// scripts are replaced.
+// A small PDF writer: A4 pages, text, lines and boxes; the output opens in
+// any PDF viewer or phone. Western text uses the two built-in Helvetica fonts.
+// Hindi (Devanagari) text and "₹" use an embedded Noto Sans Devanagari font
+// (see unifont.js); if that can't load, "₹" is written as "Rs." and letters
+// from other scripts are replaced with "?".
 const zlib = require("node:zlib");
+const unifont = require("./unifont");
 
 const A4 = { width: 595.28, height: 841.89 };
 
@@ -31,7 +32,8 @@ const EXTRA = {
   "‘": [0x91, 222, 278], "’": [0x92, 222, 278], "“": [0x93, 333, 500], "”": [0x94, 333, 500],
   "·": [0xB7, 278, 278], "×": [0xD7, 584, 584], " ": [0xA0, 278, 278],
 };
-const REPLACE = [[/₹\s?/g, "Rs. "], [/→/g, "->"], [/[‐‑−]/g, "-"], [/[​-‍﻿]/g, ""], [/[\r\n\t]+/g, " "]];
+const REPLACE = [[/→/g, "->"], [/[‐‑−]/g, "-"], [/[​﻿]/g, ""], [/[\r\n\t]+/g, " "]];
+const JOINERS = /[‌‍]/g; // zero-width (non-)joiner: only meaningful inside Hindi text
 
 function buildWidths(ascii, bold) {
   const w = new Array(256).fill(556);
@@ -46,10 +48,14 @@ function buildWidths(ascii, bold) {
 }
 const WIDTHS = { regular: buildWidths(HELVETICA, false), bold: buildWidths(HELVETICA_BOLD, true) };
 
-// Unicode text -> one byte per character in the fonts' encoding.
+// Unicode text -> the form the page is drawn from: Western characters become
+// one byte each in the Helvetica fonts' encoding (codes below 256); Hindi
+// letters and "₹" stay as they are (codes 256 and up) for the embedded font.
 function encode(text) {
   let s = String(text ?? "");
   for (const [re, to] of REPLACE) s = s.replace(re, to);
+  const unicode = unifont.available();
+  if (!unicode) s = s.replace(/₹\s?/g, "Rs. ").replace(JOINERS, "");
   let out = "";
   for (const ch of s.normalize("NFC")) {
     const code = ch.codePointAt(0);
@@ -57,7 +63,19 @@ function encode(text) {
     else if (EXTRA[ch]) out += String.fromCharCode(EXTRA[ch][0]);
     else if (code >= 0xA1 && code <= 0xFF) out += ch;
     else if (code < 32) continue;
+    else if (unicode && (unifont.covers(code) || code === 0x200C || code === 0x200D)) out += ch;
     else out += "?";
+  }
+  return out;
+}
+
+// Splits drawn text into Helvetica parts and embedded-font parts.
+function runs(encoded) {
+  const out = [];
+  for (const ch of encoded) {
+    const uni = ch.codePointAt(0) > 0xFF;
+    const last = out[out.length - 1];
+    if (last && last.uni === uni) last.text += ch; else out.push({ uni, text: ch });
   }
   return out;
 }
@@ -65,7 +83,10 @@ function encode(text) {
 function widthOf(encoded, size, bold = false) {
   const table = bold ? WIDTHS.bold : WIDTHS.regular;
   let total = 0;
-  for (let i = 0; i < encoded.length; i++) total += table[encoded.charCodeAt(i)];
+  for (const run of runs(encoded)) {
+    if (run.uni) total += unifont.shape(run.text, bold).width;
+    else for (let i = 0; i < run.text.length; i++) total += table[run.text.charCodeAt(i)];
+  }
   return (total * size) / 1000;
 }
 
@@ -92,8 +113,26 @@ class Page {
     if (maxWidth && widthOf(s, size, bold) > maxWidth) s = truncate(s, maxWidth, size, bold);
     if (!s) return 0;
     const w = widthOf(s, size, bold);
-    const left = align === "right" ? x - w : align === "center" ? x - w / 2 : x;
-    this.ops.push(`BT /${bold ? "F2" : "F1"} ${num(size)} Tf ${rgb(color)} rg ${num(left)} ${num(this.doc.height - y)} Td ${pdfString(s)} Tj ET`);
+    let pen = align === "right" ? x - w : align === "center" ? x - w / 2 : x;
+    const base = this.doc.height - y;
+    const parts = [];
+    for (const run of runs(s)) {
+      if (!run.uni) {
+        parts.push(`/${bold ? "F2" : "F1"} ${num(size)} Tf 1 0 0 1 ${num(pen)} ${num(base)} Tm ${pdfString(run.text)} Tj`);
+        pen += widthOf(run.text, size, bold);
+        continue;
+      }
+      // Each Hindi glyph is placed where HarfBuzz put it (vowel signs sit above,
+      // below or before their letter).
+      const used = this.doc.unicodeGlyphs[bold ? "bold" : "regular"];
+      parts.push(`/${bold ? "F4" : "F3"} ${num(size)} Tf`);
+      for (const g of unifont.shape(run.text, bold).glyphs) {
+        if (!used.has(g.gid) || (g.text && !used.get(g.gid))) used.set(g.gid, g.text || used.get(g.gid) || "");
+        parts.push(`1 0 0 1 ${num(pen + (g.dx * size) / 1000)} ${num(base + (g.dy * size) / 1000)} Tm <${g.gid.toString(16).padStart(4, "0")}> Tj`);
+        pen += (g.ax * size) / 1000;
+      }
+    }
+    this.ops.push(`BT ${rgb(color)} rg ${parts.join(" ")} ET`);
     return w;
   }
 
@@ -138,9 +177,11 @@ class Page {
 
 function truncate(encoded, maxWidth, size, bold) {
   const dots = String.fromCharCode(0x85);
-  let s = encoded;
-  while (s.length > 1 && widthOf(s + dots, size, bold) > maxWidth) s = s.slice(0, -1);
-  return s.trimEnd() + dots;
+  let s = [...encoded];
+  while (s.length > 1 && widthOf(s.join("") + dots, size, bold) > maxWidth) s.pop();
+  // Don't end on a Hindi vowel sign or virama cut off from its letter.
+  while (s.length > 1 && /[\u0900-\u0903\u093A-\u094F\u0951-\u0957\u0962\u0963\u200C\u200D]/.test(s[s.length - 1])) s.pop();
+  return s.join("").trimEnd() + dots;
 }
 
 // Splits text into lines no wider than maxWidth (long words are cut).
@@ -174,6 +215,8 @@ class PdfDocument {
     this.width = width;
     this.height = height;
     this.pages = [];
+    // Hindi glyphs drawn so far (glyph number -> the text it stands for).
+    this.unicodeGlyphs = { regular: new Map(), bold: new Map() };
   }
 
   addPage() {
@@ -191,11 +234,20 @@ class PdfDocument {
     const pagesRoot = reserve();
     const regular = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>");
     const bold = add("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>");
+    const stream = (data, extra = "") => {
+      const packed = zlib.deflateSync(data);
+      return Buffer.concat([Buffer.from(`<< /Length ${packed.length} /Filter /FlateDecode ${extra}>>\nstream\n`, "latin1"), packed, Buffer.from("\nendstream", "latin1")]);
+    };
+    let fontRefs = `/F1 ${regular} 0 R /F2 ${bold} 0 R`;
+    for (const [weight, key] of [["regular", "F3"], ["bold", "F4"]]) {
+      const used = this.unicodeGlyphs[weight];
+      if (used.size) fontRefs += ` /${key} ${unifont.pdfFontObjects(weight === "bold", used, add, stream)} 0 R`;
+    }
     const kids = [];
     for (const page of this.pages) {
       const data = zlib.deflateSync(Buffer.from(page.ops.join("\n"), "latin1"));
       const content = add(Buffer.concat([Buffer.from(`<< /Length ${data.length} /Filter /FlateDecode >>\nstream\n`, "latin1"), data, Buffer.from("\nendstream", "latin1")]));
-      kids.push(add(`<< /Type /Page /Parent ${pagesRoot} 0 R /MediaBox [0 0 ${num(this.width)} ${num(this.height)}] /Resources << /Font << /F1 ${regular} 0 R /F2 ${bold} 0 R >> >> /Contents ${content} 0 R >>`));
+      kids.push(add(`<< /Type /Page /Parent ${pagesRoot} 0 R /MediaBox [0 0 ${num(this.width)} ${num(this.height)}] /Resources << /Font << ${fontRefs} >> >> /Contents ${content} 0 R >>`));
     }
     objects[pagesRoot - 1] = `<< /Type /Pages /Kids [${kids.map((k) => `${k} 0 R`).join(" ")}] /Count ${kids.length} >>`;
     objects[catalog - 1] = `<< /Type /Catalog /Pages ${pagesRoot} 0 R >>`;
@@ -219,4 +271,4 @@ class PdfDocument {
   }
 }
 
-module.exports = { PdfDocument, encode, widthOf, wrap, A4 };
+module.exports = { PdfDocument, encode, widthOf, wrap, A4, ready: unifont.ready };

@@ -1,0 +1,15 @@
+{
+  "appId": "com.rentledger.app",
+  "appName": "Rent Ledger",
+  "webDir": "public",
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "never",
+    "scrollEnabled": true
+  },
+  "plugins": {
+    "SplashScreen": { "launchShowDuration": 0 }
+  }
+}
