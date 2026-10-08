@@ -82,7 +82,8 @@ function createServer({ dataDir = config.dataDir } = {}) {
   app.use(express.static(path.join(__dirname, "public")));
 
   // Everything under /api needs a signed-in user, except the public paths.
-  app.use("/api", (req, res, next) => (PUBLIC_API.has(req.baseUrl + req.path) ? next() : auth(req, res, next)));
+  const isPublic = (p) => PUBLIC_API.has(p) || /^\/api\/payments\/razorpay\/webhook\/[A-Za-z0-9-]{1,64}$/.test(p);
+  app.use("/api", (req, res, next) => (isPublic(req.baseUrl + req.path) ? next() : auth(req, res, next)));
   // Defence in depth: tenant accounts can only reach their own portal routes.
   app.use("/api", (req, res, next) => {
     if (req.user?.role === "tenant" && !TENANT_ALLOWED.some((r) => r.test(req.baseUrl + req.path))) return res.status(403).json({ error: "Owner account required" });
