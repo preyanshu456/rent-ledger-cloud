@@ -37,7 +37,7 @@ function register(app, { db, todayFor }) {
       room: { label: t.room.label, floorNumber: t.room.floor_number, monthlyRent: toRupees(t.room.monthly_rent_paise), gasMeterId: t.room.gas_meter_id || "", gasAuthorityId: t.room.gas_authority_id || null },
       building: { name: t.building?.name || "", address: t.building?.address || "" },
       rent: byKind("rent"), electricity: byKind("electricity"), gas: byKind("gas"), other,
-      payments: { enabled: razorpayConfigured() },
+      payments: { enabled: razorpayConfigured(db, req.orgId) },
       balance: { outstanding: toRupees(balance.outstandingPaise), overdue: toRupees(balance.overduePaise), credit: toRupees(balance.creditPaise) },
       upcoming,
       lease: lease ? { startDate: lease.start_date, endDate: lease.end_date, rent: toRupees(lease.rent_paise), dueDay: lease.due_day, frequency: lease.frequency } : null,
