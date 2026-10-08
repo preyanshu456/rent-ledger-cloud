@@ -190,6 +190,18 @@
     'No gas entries yet.': 'अभी गैस की कोई एंट्री नहीं।', 'Consumer / BP number on the gas bill': 'गैस बिल पर उपभोक्ता / BP नंबर', 'e.g. Indraprastha Gas Limited': 'जैसे: इंद्रप्रस्थ गैस लिमिटेड',
     'Link a gas meter first': 'पहले गैस मीटर जोड़ें', 'View your rent and electricity bill in one place.': 'अपना किराया और बिजली का बिल एक ही जगह देखें।',
     "Download a copy of all your records (buildings, tenants and every bill). Receipt images are not included. Keep the file somewhere private, because it contains tenants' personal details. The server also keeps automatic daily backups.": 'अपने सारे रिकॉर्ड (इमारतें, किरायेदार और हर बिल) की एक कॉपी डाउनलोड करें। रसीद की तस्वीरें शामिल नहीं हैं। फ़ाइल को किसी निजी जगह रखें, क्योंकि इसमें किरायेदारों की निजी जानकारी है। सर्वर भी हर दिन अपने आप बैकअप रखता है।',
+    // Settings → Online payments (each owner's own Razorpay account)
+    'Connected': 'जुड़ा हुआ', 'Disconnect': 'हटाएँ', 'Copy': 'कॉपी करें', 'Live': 'लाइव', 'Test mode': 'टेस्ट मोड',
+    'Get paid straight to your bank': 'पैसा सीधे अपने बैंक खाते में पाएँ', 'Connect Razorpay': 'Razorpay जोड़ें', 'Replace keys': 'कुंजियाँ बदलें',
+    'Key ID *': 'Key ID *', 'Key Secret *': 'Key Secret *', 'Webhook secret (optional)': 'Webhook secret (वैकल्पिक)', 'Check and save': 'जाँचें और सहेजें',
+    'Leave empty to keep the saved one': 'सहेजा हुआ रखने के लिए खाली छोड़ें', 'Webhook backup (recommended)': 'Webhook बैकअप (सुझाया गया)',
+    'Set up online payments': 'ऑनलाइन भुगतान सेट करें',
+    'The Key Secret is stored encrypted and is never shown again or sent to any browser.': 'Key Secret एन्क्रिप्ट करके रखा जाता है, और न दोबारा दिखाया जाता है, न किसी ब्राउज़र को भेजा जाता है।',
+    'Tenants can’t pay online yet. Connect your own Razorpay account so their payments go straight to your bank account.': 'किरायेदार अभी ऑनलाइन भुगतान नहीं कर सकते। अपना Razorpay खाता जोड़ें, ताकि उनका भुगतान सीधे आपके बैंक खाते में आए।',
+    'Razorpay connected. Tenants can now pay online.': 'Razorpay जुड़ गया। अब किरायेदार ऑनलाइन भुगतान कर सकते हैं।', 'Razorpay disconnected': 'Razorpay हटा दिया गया',
+    'Use live keys?': 'लाइव कुंजियाँ इस्तेमाल करें?', 'Use live keys': 'लाइव कुंजियाँ इस्तेमाल करें', 'Tenants will pay real money into this Razorpay account.': 'किरायेदार इस Razorpay खाते में असली पैसा भरेंगे।',
+    'Disconnect Razorpay?': 'Razorpay हटाएँ?', 'Tenants will no longer see the Pay button until you connect an account again.': 'जब तक आप फिर से खाता नहीं जोड़ते, किरायेदारों को भुगतान बटन नहीं दिखेगा।',
+    'Copied': 'कॉपी हो गया',
   };
 
   const KEY = 'rentLedgerLang';

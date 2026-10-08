@@ -72,7 +72,8 @@ function configWarnings(env = process.env) {
   pair("RESEND_API_KEY", "OTP_FROM_EMAIL", "Email (Resend)");
   const twilio = ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"].filter((k) => env[k]);
   if (twilio.length && twilio.length < 3) warnings.push("SMS (Twilio): set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM_NUMBER together.");
-  if (env.RAZORPAY_KEY_ID && !env.RAZORPAY_WEBHOOK_SECRET) warnings.push("Razorpay webhook backup is off (RAZORPAY_WEBHOOK_SECRET not set). See RAZORPAY_SETUP.md.");
+  if (env.RAZORPAY_KEY_ID) warnings.push("RAZORPAY_KEY_ID is set on the server, but each owner now connects their own Razorpay account in Settings → Online payments. The server keys are only used to finish payments started before that change; remove them once those are done.");
+  if (env.SECRETS_KEY && !/^[0-9a-f]{64}$/i.test(env.SECRETS_KEY) && Buffer.from(env.SECRETS_KEY, "base64").length !== 32) warnings.push("SECRETS_KEY must be 32 bytes (64 hex characters or base64).");
   if (env.NODE_ENV === "production" && !env.DATA_DIR) warnings.push("DATA_DIR is not set in production; data will be stored inside the container and lost on redeploy.");
   if (env.OWNER_SETUP_CODE && env.OWNER_SETUP_CODE.length < 8) warnings.push("OWNER_SETUP_CODE is shorter than 8 characters.");
   const aiProvider = String(env.AI_PROVIDER || (env.ANTHROPIC_API_KEY ? "anthropic" : "")).toLowerCase();

@@ -1084,10 +1084,11 @@
     if (tab === 'team' && isOwner()) d.team = await api('GET', '/api/team');
     if (tab === 'audit' && isOwner()) d.audit = await api('GET', '/api/audit?limit=200');
     if (tab === 'data' && isOwner()) d.backups = await api('GET', '/api/admin/backups');
+    if (tab === 'payments' && isOwner()) d.payAcct = await api('GET', '/api/org/payment-account');
   };
   X.views.settings = () => {
     const tab = s.settings.tab;
-    const tabs = [['org', 'Organisation'], ...(isOwner() ? [['team', 'Team'], ['audit', 'Audit log'], ['data', 'Backups']] : [])];
+    const tabs = [['org', 'Organisation'], ...(isOwner() ? [['payments', 'Online payments'], ['team', 'Team'], ['audit', 'Audit log'], ['data', 'Backups']] : [])];
     const o = d.org || { settings: {} };
     let body = '';
     if (tab === 'org') {
@@ -1107,7 +1108,9 @@
         </fieldset>
         ${isOwner() ? '<div class="form-actions"><button class="btn" type="submit">Save</button></div>' : '<p class="profile-note">Only the owner can change organisation settings.</p>'}</form>`)
         + `<div class="two-col">${card('Language', `<p class="profile-note">For your screens on this device.</p>${window.RL_I18N ? RL_I18N.picker() : ''}`)}${typeof themePicker === 'function' ? themePicker() : ''}</div>`
-        + (isOwner() && cache.dashboard && !cache.dashboard.onlinePaymentsEnabled ? card('Online payments', '<p class="profile-note">Tenants can’t pay online yet. To show a Pay button on their bills, add your Razorpay keys (RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET) to the server settings in Railway.</p>') : '');
+        + (isOwner() && cache.dashboard && !cache.dashboard.onlinePaymentsEnabled ? card('Online payments', '<p class="profile-note">Tenants can’t pay online yet. Connect your own Razorpay account so their payments go straight to your bank account.</p><div class="form-actions"><button class="btn small" data-action="set-state" data-key="settings.tab" data-value="payments">Set up online payments</button></div>') : '');
+    } else if (tab === 'payments') {
+      body = paymentAccountView(d.payAcct || {});
     } else if (tab === 'team') {
       const t = d.team || { members: [], invites: [] };
       body = card('Team', `${table(['Name', 'Contact', 'Role', 'Since', ''], t.members.map((m) => [h(m.name), h(m.contact), `${h(label(m.role))}${m.disabled ? ` ${stamp('void')}` : ''}`, h(m.createdAt.slice(0, 10)), m.role === 'manager' && !m.disabled ? `<button class="btn small danger" data-action="team-disable" data-id="${m.id}">Remove access</button>` : '']))}
@@ -1120,6 +1123,45 @@
       body = card('Backups', `<p class="profile-note">The server keeps automatic database backups (at every start-up and once a day). You can also make one now, or download all your records.</p><div class="form-actions"><button class="btn" data-action="backup-now">Back up now</button><button class="btn secondary" data-action="download-backup">Download all records (JSON)</button></div>${table(['Backup', 'Time'], (d.backups || []).map((b) => [h(b.name), h(b.at.slice(0, 16).replace('T', ' '))]), { emptyText: 'No backups yet.' })}<p class="profile-note">The download contains tenants’ personal details. Keep it private. Uploaded documents are not included.</p>`);
     }
     return `${page('Settings', '')}<div class="tab-row">${tabs.map(([k, t]) => `<button class="tab-btn ${tab === k ? 'active' : ''}" data-action="set-state" data-key="settings.tab" data-value="${k}">${t}</button>`).join('')}</div>${body}`;
+  };
+  // ---------- each owner's own Razorpay account ----------
+  function paymentAccountView(a) {
+    const hook = `${location.origin}${a.webhookPath || ''}`;
+    const status = a.connected
+      ? card('Connected', `<p class="pay-acct-status"><span class="stamp ${a.mode === 'live' ? 'paid' : 'partial'}">${a.mode === 'live' ? 'Live' : 'Test mode'}</span> <code>${h(a.keyId)}</code></p>
+          <p class="profile-note">Your tenants’ online payments go into this Razorpay account and settle to the bank account you linked in Razorpay (Account &amp; Settings → Bank account). ${a.mode === 'test' ? '<b>Test mode:</b> no real money moves. Switch to your live keys when you are ready.' : ''}</p>
+          <p class="profile-note">Checked with Razorpay on ${h(String(a.verifiedAt || '').slice(0, 10))}. Webhook backup: <b>${a.webhookConfigured ? 'on' : 'off'}</b>.</p>
+          <div class="form-actions"><button class="btn small danger" data-action="pay-acct-disconnect">Disconnect</button></div>`)
+      : card('Get paid straight to your bank', `<p class="profile-note">${a.needsReentry ? '<b>Please enter your keys again.</b> The saved keys can no longer be read on this server. ' : ''}Tenants see a <b>Pay</b> button only after you connect your own Razorpay account. Their money goes into your account and Razorpay settles it to <b>your</b> bank account. Rent Ledger never holds it.</p>
+          <ol class="steps-list"><li>Sign up at razorpay.com and finish KYC. Add your bank account under <b>Account &amp; Settings → Bank account</b>.</li><li>Go to <b>Account &amp; Settings → API Keys</b> and generate a key (use Test mode first if you like).</li><li>Paste the Key ID and Key Secret below. Rent Ledger checks them with Razorpay before saving.</li></ol>`);
+    const form = card(a.connected ? 'Replace keys' : 'Connect Razorpay', `<form data-submit="pay-acct-save" autocomplete="off"><div class="form-grid cols-2">
+        ${field('Key ID *', `<input name="keyId" required maxlength="60" placeholder="rzp_live_…" spellcheck="false" autocapitalize="off" value="">`)}
+        ${field('Key Secret *', '<input name="keySecret" type="password" required maxlength="64" autocomplete="new-password" spellcheck="false">')}
+        ${field('Webhook secret (optional)', `<input name="webhookSecret" type="password" maxlength="200" autocomplete="new-password" placeholder="${a.webhookConfigured ? 'Leave empty to keep the saved one' : ''}">`, '1 / -1')}
+      </div><p class="profile-note">The Key Secret is stored encrypted and is never shown again or sent to any browser.</p>
+      <div class="form-actions"><button class="btn" type="submit">Check and save</button></div></form>`);
+    const webhook = card('Webhook backup (recommended)', `<p class="profile-note">If a tenant closes the app right after paying, Razorpay tells Rent Ledger directly. In Razorpay go to <b>Account &amp; Settings → Webhooks → Add new webhook</b>, paste this URL, choose a secret, tick <b>payment.captured</b>, <b>payment.failed</b> and <b>order.paid</b>, then save the same secret above.</p>
+      <div class="copy-row"><code class="details">${h(hook)}</code><button class="btn small secondary" data-action="copy-value" data-text="${h(hook)}">Copy</button></div>`);
+    return status + form + webhook;
+  }
+  X.submits['pay-acct-save'] = async (data, form) => {
+    const body = { keyId: (data.keyId || '').trim(), keySecret: (data.keySecret || '').trim() };
+    if ((data.webhookSecret || '').trim()) body.webhookSecret = data.webhookSecret.trim();
+    if (body.keyId.startsWith('rzp_live_') && !(await confirmDialog('Tenants will pay real money into this Razorpay account.', { title: 'Use live keys?', confirmLabel: 'Use live keys' }))) return false;
+    d.payAcct = await api('PUT', '/api/org/payment-account', body);
+    form.reset();
+    cache.dashboard = null;
+    toast('Razorpay connected. Tenants can now pay online.');
+  };
+  X.actions['pay-acct-disconnect'] = async () => {
+    if (!(await confirmDialog('Tenants will no longer see the Pay button until you connect an account again.', { title: 'Disconnect Razorpay?', confirmLabel: 'Disconnect', danger: true }))) return false;
+    d.payAcct = await api('DELETE', '/api/org/payment-account');
+    cache.dashboard = null;
+    toast('Razorpay disconnected');
+  };
+  X.actions['copy-value'] = async (el) => {
+    try { await navigator.clipboard.writeText(el.dataset.text); toast('Copied'); } catch { toast('Copy failed. Select the text and copy it.', true); }
+    return false;
   };
   X.submits['org-save'] = async (data) => {
     const body = { name: data.name, timeZone: data.timeZone, defaultLanguage: data.defaultLanguage, settings: { receipts: { footer: data.footer }, bills: { paymentDetails: data.paymentDetails || '' }, retention: { anonymizeFormerTenantsAfterDays: Number(data.retentionDays) || 0 }, assistant: { aiEnabled: data.aiEnabled === 'on' } } };

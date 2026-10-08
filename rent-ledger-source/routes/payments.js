@@ -8,24 +8,19 @@ const ledger = require("../services/ledger");
 const { safeEqualText } = require("../services/accounts");
 const { notify, notifyStaff } = require("../services/notify");
 const { audit } = require("../services/audit");
-const { tenantOnly } = require("./common");
+const { tenantOnly, ownerOnly, ctxOf } = require("./common");
+const accounts = require("../services/paymentAccounts");
 
-const RAZORPAY_API = "https://api.razorpay.com/v1";
 const LABELS = { rent: "Rent", electricity: "Electricity", gas: "Gas", maintenance: "Maintenance", late_fee: "Late fee", damage: "Damage", other: "Other" };
 
-function razorpayConfigured() {
-  return Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET);
+// Online payments are on for an owner once they have connected their own
+// Razorpay account in Settings. There is no shared fallback account, so money
+// for one owner can never land in someone else's account.
+function razorpayConfigured(db, orgId) {
+  return accounts.isConnected(db, orgId);
 }
 
-async function razorpayRequest(method, pathname, body, fetchImpl = fetch) {
-  const authHeader = Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString("base64");
-  const response = await fetchImpl(`${RAZORPAY_API}${pathname}`, {
-    method, headers: { Authorization: `Basic ${authHeader}`, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw Object.assign(new Error(data?.error?.description || `Razorpay request failed (${response.status})`), { razorpayStatus: response.status });
-  return data;
-}
+const razorpayRequest = (creds, method, pathname, body) => accounts.razorpayRequest(creds, method, pathname, body);
 
 // Records a captured Razorpay payment against the order's bills. Idempotent.
 function applyOrderPayment(db, order, razorpayPaymentId, method, today) {
@@ -60,7 +55,8 @@ function register(app, { db, todayFor, log }) {
 
   app.post("/api/tenant/payments/order", tenantOnly, async (req, res, next) => {
     try {
-      if (!razorpayConfigured()) return res.status(503).json({ error: "Online payments are not set up yet. Please ask your owner to enable Razorpay." });
+      const creds = accounts.getAccount(db, req.orgId);
+      if (!creds) return res.status(503).json({ error: "Online payments are not set up yet. Please ask your owner to connect their Razorpay account." });
       const tenant = tenantOf(req);
       if (!tenant) return res.status(404).json({ error: "No active tenancy found" });
       const today = todayFor(req);
@@ -90,22 +86,23 @@ function register(app, { db, todayFor, log }) {
       const kinds = [...new Set(items.map((i) => LABELS[i.kind] || i.kind))].join(", ");
       let order;
       try {
-        order = await razorpayRequest("POST", "/orders", {
+        order = await razorpayRequest(creds, "POST", "/orders", {
           amount: amountPaise, currency: "INR", receipt: orderRowId,
           notes: { paymentId: orderRowId, tenant: tenant.name.slice(0, 200), room: String(room?.label || "").slice(0, 200), bills: kinds },
         });
       } catch (err) {
         if (err.razorpayStatus === 401) {
-          log.error("Razorpay rejected the API keys — check RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET.", { requestId: req.id });
+          log.error("Razorpay rejected the owner's API keys.", { requestId: req.id, orgId: req.orgId });
+          notifyStaff(db, req.orgId, { kind: "payment_review", title: "Razorpay keys need attention", body: "Razorpay rejected your API keys, so tenants can't pay online. Reconnect your account in Settings → Online payments.", link: "settings" });
           return res.status(502).json({ error: "Online payments are misconfigured (Razorpay rejected the API keys). Please tell your owner." });
         }
         log.error("Razorpay order creation failed", { requestId: req.id, error: err.message });
         return res.status(500).json({ error: `Could not start the payment: ${err.message}` });
       }
-      db.run(`INSERT INTO payment_orders (id, org_id, tenant_id, room_id, razorpay_order_id, amount_paise, currency, items_json, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-        orderRowId, req.orgId, tenant.id, tenant.room_id, order.id, amountPaise, "INR", JSON.stringify(items), "created", db.nowIso());
+      db.run(`INSERT INTO payment_orders (id, org_id, tenant_id, room_id, razorpay_order_id, amount_paise, currency, items_json, status, created_at, key_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        orderRowId, req.orgId, tenant.id, tenant.room_id, order.id, amountPaise, "INR", JSON.stringify(items), "created", db.nowIso(), creds.keyId);
       res.status(201).json({
-        keyId: process.env.RAZORPAY_KEY_ID, orderId: order.id, amount: amountPaise, currency: "INR", name: building?.name || "Rent Ledger",
+        keyId: creds.keyId, orderId: order.id, amount: amountPaise, currency: "INR", name: building?.name || "Rent Ledger",
         description: `${kinds} · ${room?.label || "your home"}`, prefill: { name: tenant.name, contact: tenant.mobile || "", email: tenant.email || "" },
       });
     } catch (err) { next(err); }
@@ -113,23 +110,24 @@ function register(app, { db, todayFor, log }) {
 
   app.post("/api/tenant/payments/verify", tenantOnly, async (req, res, next) => {
     try {
-      if (!razorpayConfigured()) return res.status(503).json({ error: "Online payments are not set up." });
       const orderId = String(req.body?.razorpay_order_id || "");
       const paymentId = String(req.body?.razorpay_payment_id || "");
       const signature = String(req.body?.razorpay_signature || "");
       if (!/^order_[A-Za-z0-9]+$/.test(orderId) || !/^pay_[A-Za-z0-9]+$/.test(paymentId)) return res.status(400).json({ error: "Invalid payment details." });
-      const expected = crypto.createHmac("sha256", process.env.RAZORPAY_KEY_SECRET).update(`${orderId}|${paymentId}`).digest("hex");
-      if (!safeEqualText(expected, signature)) return res.status(400).json({ error: "Payment verification failed." });
-      const order = db.get("SELECT * FROM payment_orders WHERE razorpay_order_id = ?", orderId);
+      const order = db.get("SELECT * FROM payment_orders WHERE razorpay_order_id = ? AND org_id = ?", orderId, req.orgId);
       if (!order || order.tenant_id !== req.user.tenant_id) return res.status(404).json({ error: "Payment not found." });
+      const creds = accounts.credsForOrder(db, order);
+      if (!creds) return res.status(503).json({ error: "Online payments are not set up." });
+      const expected = crypto.createHmac("sha256", creds.keySecret).update(`${orderId}|${paymentId}`).digest("hex");
+      if (!safeEqualText(expected, signature)) return res.status(400).json({ error: "Payment verification failed." });
       if (order.status === "paid") return res.json({ ok: true, amount: toRupees(order.amount_paise), alreadyRecorded: true });
       let rp;
       try {
-        rp = await razorpayRequest("GET", `/payments/${paymentId}`);
+        rp = await razorpayRequest(creds, "GET", `/payments/${paymentId}`);
         if (rp.order_id !== orderId) throw new Error("payment does not belong to this order");
         if (Number(rp.amount) !== order.amount_paise) throw new Error("amount mismatch");
         // Accounts set to manual capture leave payments "authorized" — capture them here.
-        if (rp.status === "authorized") rp = await razorpayRequest("POST", `/payments/${paymentId}/capture`, { amount: rp.amount, currency: rp.currency });
+        if (rp.status === "authorized") rp = await razorpayRequest(creds, "POST", `/payments/${paymentId}/capture`, { amount: rp.amount, currency: rp.currency });
         if (rp.status !== "captured") throw new Error(`payment status is "${rp.status}"`);
       } catch (err) {
         return res.status(502).json({ error: `We could not confirm this payment yet (${err.message}). If money was deducted, share payment ID ${paymentId} with your owner.` });
@@ -148,25 +146,71 @@ function register(app, { db, todayFor, log }) {
     res.json({ ok: true });
   });
 
-  // Backup path when the tenant closes the page right after paying.
-  app.post("/api/payments/razorpay/webhook", (req, res) => {
-    const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
+  // Backup path when the tenant closes the page right after paying. Each owner
+  // adds their own webhook in Razorpay pointing at /webhook/<their org id>,
+  // signed with the webhook secret they saved in Settings.
+  function handleWebhook(req, res, { secret, orgId }) {
     if (!secret) return res.status(503).json({ error: "Webhook is not configured." });
     const expected = crypto.createHmac("sha256", secret).update(req.rawBody || Buffer.alloc(0)).digest("hex");
     if (!safeEqualText(expected, req.headers["x-razorpay-signature"])) return res.status(400).json({ error: "Invalid signature." });
     const event = req.body?.event;
     const entity = req.body?.payload?.payment?.entity;
+    const findOrder = (id) => {
+      if (orgId) return db.get("SELECT * FROM payment_orders WHERE razorpay_order_id = ? AND org_id = ?", id, orgId);
+      // The old shared webhook only covers orders made with the old shared keys.
+      const order = db.get("SELECT * FROM payment_orders WHERE razorpay_order_id = ?", id);
+      return order && (!order.key_id || order.key_id === process.env.RAZORPAY_KEY_ID) ? order : null;
+    };
     if ((event === "payment.captured" || event === "order.paid") && entity?.order_id && entity.status === "captured") {
-      const order = db.get("SELECT * FROM payment_orders WHERE razorpay_order_id = ?", entity.order_id);
+      const order = findOrder(entity.order_id);
       if (order && Number(entity.amount) === order.amount_paise) {
         const tz = db.get("SELECT time_zone FROM organizations WHERE id = ?", order.org_id)?.time_zone;
         applyOrderPayment(db, order, entity.id, entity.method, require("../lib/dates").localDate(tz || "Asia/Kolkata"));
       }
     }
     if (event === "payment.failed" && entity?.order_id) {
-      db.run("UPDATE payment_orders SET status = 'failed', failure_reason = ? WHERE razorpay_order_id = ? AND status = 'created'", String(entity.error_description || "failed").slice(0, 200), entity.order_id);
+      const order = findOrder(entity.order_id);
+      if (order) db.run("UPDATE payment_orders SET status = 'failed', failure_reason = ? WHERE id = ? AND status = 'created'", String(entity.error_description || "failed").slice(0, 200), order.id);
     }
     res.json({ ok: true });
+  }
+
+  app.post("/api/payments/razorpay/webhook/:orgId", (req, res) => {
+    const orgId = String(req.params.orgId || "");
+    const acct = /^[A-Za-z0-9-]{8,64}$/.test(orgId) ? accounts.getAccount(db, orgId) : null;
+    handleWebhook(req, res, { secret: acct?.webhookSecret || "", orgId });
+  });
+
+  // Older single-account setup (server-wide RAZORPAY_WEBHOOK_SECRET).
+  app.post("/api/payments/razorpay/webhook", (req, res) => handleWebhook(req, res, { secret: process.env.RAZORPAY_WEBHOOK_SECRET || "", orgId: null }));
+
+  // ---------- owner: connect their own Razorpay account ----------
+  app.get("/api/org/payment-account", ownerOnly, (req, res) => {
+    res.json(accounts.publicView(db, req.orgId));
+  });
+
+  app.put("/api/org/payment-account", ownerOnly, async (req, res, next) => {
+    try {
+      const keyId = String(req.body?.keyId || "").trim();
+      const keySecret = String(req.body?.keySecret || "").trim();
+      const webhookRaw = req.body?.webhookSecret;
+      const webhookSecret = webhookRaw === null ? null : String(webhookRaw || "").trim();
+      if (!accounts.KEY_ID_RE.test(keyId)) return res.status(400).json({ error: "The Key ID should look like rzp_live_… or rzp_test_…" });
+      if (!/^[A-Za-z0-9]{10,64}$/.test(keySecret)) return res.status(400).json({ error: "Paste the Key Secret exactly as Razorpay shows it." });
+      if (webhookSecret && webhookSecret.length > 200) return res.status(400).json({ error: "The webhook secret is too long." });
+      const check = await accounts.checkKeys({ keyId, keySecret });
+      if (!check.ok) return res.status(400).json({ error: check.error });
+      accounts.saveAccount(db, req.orgId, req.user.id, { keyId, keySecret, webhookSecret });
+      audit(db, ctxOf(req), "payments.account_connected", "organization", req.orgId, { keyId, mode: accounts.modeOf(keyId), webhook: Boolean(webhookSecret) });
+      res.json(accounts.publicView(db, req.orgId));
+    } catch (err) { next(err); }
+  });
+
+  app.delete("/api/org/payment-account", ownerOnly, (req, res) => {
+    const before = accounts.publicView(db, req.orgId);
+    accounts.removeAccount(db, req.orgId);
+    audit(db, ctxOf(req), "payments.account_disconnected", "organization", req.orgId, { keyId: before.keyId });
+    res.json(accounts.publicView(db, req.orgId));
   });
 
   // Owner view of online payments (dashboard card).
@@ -182,7 +226,6 @@ function register(app, { db, todayFor, log }) {
     })));
   });
 
-  void audit;
 }
 
 module.exports = { register, razorpayConfigured, applyOrderPayment };
