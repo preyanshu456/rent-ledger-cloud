@@ -615,6 +615,8 @@ async function loadOwnerData() {
   if (window.RL_EXT?.views[state.view]) jobs.push(RL_EXT.load(state.view));
   if (state.view === "building" && state.buildingId) jobs.push(api("GET", `/api/rent?buildingId=${state.buildingId}`).then((r) => { cache.buildingRent = r; }));
   if (state.view === "room" && state.roomId) {
+    // The owner's preferred way of recording rent (Settings → Organisation).
+    if (!cache.org) jobs.push(api("GET", "/api/org").then((o) => { cache.org = o; }).catch(() => {}));
     jobs.push(Promise.all([
       api("GET", `/api/rent?roomId=${state.roomId}`),
       api("GET", `/api/electricity?roomId=${state.roomId}`),
@@ -1264,7 +1266,90 @@ function previousTenantsCard(r) {
       </div>`;
 }
 
+const rentMode = () => (cache.org?.settings?.bills?.rentMode === "instalments" ? "instalments" : "simple");
+const METHOD_LABELS = { cash: "Cash", upi: "UPI", bank_transfer: "Bank transfer", cheque: "Cheque", razorpay: "Paid online", other: "Other", deposit_adjustment: "From deposit" };
+
+// Instalments: set the total rent once, then add each amount as it comes in.
+// Shows received and remaining for every month.
+function renderRentInstalments(r, tenant) {
+  const now = new Date();
+  const editForms = cache.rent.filter((entry) => state.forms[`editRent-${entry.id}`]).map((entry) => `<div class="card ledger-edit"><h3>Edit rent entry · ${MONTHS[entry.month]} ${entry.year}</h3><form data-submit="edit-rent" data-id="${entry.id}"><div class="form-grid cols-3"><div class="form-field"><label>Month *</label><select name="month" required>${MONTHS.slice(1).map((month, index) => `<option value="${index + 1}" ${index + 1 === Number(entry.month) ? 'selected' : ''}>${month}</option>`).join('')}</select></div><div class="form-field"><label>Year *</label><input name="year" type="number" required value="${entry.year}"></div><div class="form-field"><label>Total rent (₹) *</label><input name="rentAmount" type="number" min="0" step="0.01" required value="${entry.rentAmount}"></div><div class="form-field"><label>Due date</label><input name="dueDate" type="date" value="${esc(entry.dueDate || '')}"></div><div class="form-field" style="grid-column:span 2"><label>Notes</label><input name="notes" value="${esc(entry.notes || '')}"></div></div><p class="profile-note">Amounts received are added one by one with “Add amount received”.</p><div class="form-actions"><button class="btn" type="submit">Save changes</button><button class="btn secondary" type="button" data-toggle-form="editRent-${entry.id}">Cancel</button></div></form></div>`).join('');
+  const addForm = state.forms.addRent ? `
+    <div class="card">
+      <h3>Add rent for a month</h3>
+      <form data-submit="add-rent" data-room-id="${r.id}" data-tenant-id="${tenant ? tenant.id : ""}">
+        <div class="form-grid cols-3">
+          <div class="form-field"><label>Month *</label>
+            <select name="month" required>${MONTHS.slice(1).map((m, i) => `<option value="${i + 1}" ${i + 1 === now.getMonth() + 1 ? "selected" : ""}>${m}</option>`).join("")}</select>
+          </div>
+          <div class="form-field"><label>Year *</label><input name="year" type="number" required value="${now.getFullYear()}" /></div>
+          <div class="form-field"><label>Total rent (₹) *</label><input name="rentAmount" type="number" min="0" step="0.01" required value="${r.monthlyRent || ""}" /></div>
+          <div class="form-field"><label>Received now (₹)</label><input name="amountPaid" type="number" min="0" step="0.01" placeholder="0" /></div>
+          <div class="form-field"><label>Received on</label><input name="paidDate" type="date" value="${today()}" /></div>
+          <div class="form-field"><label>Due date</label><input name="dueDate" type="date" /></div>
+          <div class="form-field" style="grid-column: span 3;"><label>Notes</label><input name="notes" placeholder="Optional" /></div>
+        </div>
+        <div class="form-actions">
+          <button class="btn" type="submit">Save</button>
+          <button class="btn secondary" type="button" data-toggle-form="addRent">Cancel</button>
+        </div>
+      </form>
+    </div>
+  ` : "";
+  const totalRemaining = cache.rent.reduce((sum, e) => sum + Number(e.outstanding || 0), 0);
+  const fmtDay = (d) => { try { return new Date(`${d}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }); } catch { return d; } };
+  const cards = cache.rent.map((e) => {
+    const total = Number(e.rentAmount) || 0;
+    const received = Number(e.amountPaid) || 0;
+    const remaining = Number(e.outstanding) || 0;
+    const pct = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 100;
+    const formOpen = state.forms[`receive-${e.id}`];
+    const receiveForm = formOpen ? `<form class="instal-form" data-submit="receive-rent" data-id="${e.id}">
+        <div class="form-grid cols-3">
+          <div class="form-field"><label>Amount received (₹) *</label><input name="amount" type="number" min="0.01" step="0.01" max="${remaining}" required placeholder="Up to ${fmtMoney(remaining)}" autofocus></div>
+          <div class="form-field"><label>Paid by</label><select name="method"><option value="cash">Cash</option><option value="upi">UPI</option><option value="bank_transfer">Bank transfer</option><option value="cheque">Cheque</option><option value="other">Other</option></select></div>
+          <div class="form-field"><label>Received on</label><input name="receivedOn" type="date" value="${today()}"></div>
+          <div class="form-field" style="grid-column: span 3;"><label>Reference / note</label><input name="reference" maxlength="120" placeholder="UTR, cheque no. (optional)"></div>
+        </div>
+        <div class="form-actions"><button class="btn" type="submit">Add amount</button><button class="btn secondary" type="button" data-toggle-form="receive-${e.id}">Cancel</button></div>
+      </form>` : "";
+    const list = (e.receipts || []).length
+      ? `<ul class="instal-list">${e.receipts.map((x) => `<li><span>${fmtMoney(x.amount)}</span><span class="muted">${esc(METHOD_LABELS[x.method] || x.method)}${x.reference ? ` · ${esc(x.reference)}` : ""}</span><span class="muted">${esc(fmtDay(x.receivedOn))}</span></li>`).join("")}</ul>`
+      : `<p class="profile-note">Nothing received yet.</p>`;
+    return `<div class="instal-card">
+      <div class="instal-head"><b>${MONTHS[e.month]} ${e.year}</b>${onlinePaymentNote(e)}<span class="stamp ${e.status}">${e.status}</span></div>
+      <div class="instal-figures">
+        <div><span>Total rent</span><strong>${fmtMoney(total)}</strong></div>
+        <div><span>Received</span><strong class="is-paid">${fmtMoney(received)}</strong></div>
+        <div><span>Remaining</span><strong class="${remaining > 0 ? "is-due" : "is-paid"}">${fmtMoney(remaining)}</strong></div>
+      </div>
+      <div class="instal-bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="Received ${pct}%"><i style="width:${pct}%"></i></div>
+      ${list}
+      ${receiveForm}
+      <div class="instal-actions">
+        ${remaining > 0 && !formOpen ? `<button class="btn small" data-toggle-form="receive-${e.id}">+ Add amount received</button>` : ""}
+        ${e.receipt ? `<button class="btn small secondary" data-action="view-receipt" data-receipt-id="${e.receipt.id}">View proof</button>` : ""}
+        <button class="btn small secondary" data-toggle-form="editRent-${e.id}">Edit</button>
+        <button class="btn small danger" data-action="delete-rent" data-id="${e.id}">Delete</button>
+      </div>
+    </div>`;
+  }).join("");
+  return `
+    ${!tenant ? `<div class="card"><div class="empty-state">No active tenant — you can still log rent history for this room.</div></div>` : ""}
+    ${addForm}${editForms}
+    <div class="card">
+      <h3>
+        Rent received
+        <button class="btn small" data-toggle-form="addRent">+ Add month</button>
+      </h3>
+      <p class="profile-note">Instalments: set the total rent, then add each amount as you receive it.${totalRemaining > 0 ? ` <b>Still to receive for this room: ${fmtMoney(totalRemaining)}</b>` : ""}</p>
+      ${cache.rent.length === 0 ? `<div class="empty-state">No rent entries yet.</div>` : `<div class="instal-grid">${cards}</div>`}
+    </div>
+  `;
+}
+
 function renderRentTab(r, tenant) {
+  if (rentMode() === "instalments") return renderRentInstalments(r, tenant);
   const now = new Date();
   const editForms = cache.rent.filter((entry) => state.forms[`editRent-${entry.id}`]).map((entry) => `<div class="card ledger-edit"><h3>Edit rent entry · ${MONTHS[entry.month]} ${entry.year}</h3><form data-submit="edit-rent" data-id="${entry.id}"><div class="form-grid cols-3"><div class="form-field"><label>Month *</label><select name="month" required>${MONTHS.slice(1).map((month, index) => `<option value="${index + 1}" ${index + 1 === Number(entry.month) ? 'selected' : ''}>${month}</option>`).join('')}</select></div><div class="form-field"><label>Year *</label><input name="year" type="number" required value="${entry.year}"></div><div class="form-field"><label>Rent amount (₹) *</label><input name="rentAmount" type="number" min="0" step="0.01" required value="${entry.rentAmount}"></div><div class="form-field"><label>Amount paid (₹)</label><input name="amountPaid" type="number" min="0" step="0.01" value="${entry.amountPaid}"></div><div class="form-field"><label>Due date</label><input name="dueDate" type="date" value="${esc(entry.dueDate || '')}"></div><div class="form-field"><label>Paid date</label><input name="paidDate" type="date" value="${esc(entry.paidDate || '')}"></div><div class="form-field" style="grid-column:span 3"><label>Notes</label><input name="notes" value="${esc(entry.notes || '')}"></div></div><div class="form-actions"><button class="btn" type="submit">Save changes</button><button class="btn secondary" type="button" data-toggle-form="editRent-${entry.id}">Cancel</button></div></form></div>`).join('');
   const addForm = state.forms.addRent ? `
@@ -1762,6 +1847,10 @@ async function handleSubmit(form) {
       await api("POST", "/api/rent", { ...data, roomId: form.dataset.roomId, tenantId: form.dataset.tenantId || null });
       state.forms.addRent = false;
       toast("Rent entry added");
+    } else if (kind === "receive-rent") {
+      await api("POST", `/api/rent/${form.dataset.id}/receive`, { amount: Number(data.amount), method: data.method, receivedOn: data.receivedOn, reference: data.reference || "" });
+      state.forms[`receive-${form.dataset.id}`] = false;
+      toast("Amount added");
     } else if (kind === 'edit-rent') {
       await api('PUT', `/api/rent/${form.dataset.id}`, data);
       state.forms[`editRent-${form.dataset.id}`] = false;

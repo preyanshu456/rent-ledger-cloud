@@ -1,5 +1,11 @@
 # Changelog
 
+## Rent in instalments (October 2026)
+- New choice in **Settings → Organisation → How you record rent**: *Simple* (the original way: mark paid or set the amount paid) or *Instalments*.
+- With **Instalments**, each month on a room's **Rent** tab shows the **total rent**, **received** and **remaining**, with a progress bar and every amount received (date, how it was paid, reference).
+- **+ Add amount received** adds one payment at a time (e.g. ₹10,000 of ₹1,00,000 leaves ₹90,000 remaining). More than the remaining amount is refused. The month turns *paid* when nothing is left.
+- The room also shows how much is still to be received in total. Simple mode is unchanged and stays the default.
+
 ## Each owner gets paid into their own bank account (October 2026)
 - **Settings → Online payments:** every owner connects their own Razorpay account (Key ID and Key Secret, checked with Razorpay before saving). Tenant payments go into that owner's Razorpay account and settle to the owner's own bank account. Rent Ledger never holds the money.
 - There is no shared account any more: an owner's tenants see the Pay button only after that owner connects.

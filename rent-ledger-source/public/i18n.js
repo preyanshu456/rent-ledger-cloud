@@ -190,6 +190,15 @@
     'No gas entries yet.': 'अभी गैस की कोई एंट्री नहीं।', 'Consumer / BP number on the gas bill': 'गैस बिल पर उपभोक्ता / BP नंबर', 'e.g. Indraprastha Gas Limited': 'जैसे: इंद्रप्रस्थ गैस लिमिटेड',
     'Link a gas meter first': 'पहले गैस मीटर जोड़ें', 'View your rent and electricity bill in one place.': 'अपना किराया और बिजली का बिल एक ही जगह देखें।',
     "Download a copy of all your records (buildings, tenants and every bill). Receipt images are not included. Keep the file somewhere private, because it contains tenants' personal details. The server also keeps automatic daily backups.": 'अपने सारे रिकॉर्ड (इमारतें, किरायेदार और हर बिल) की एक कॉपी डाउनलोड करें। रसीद की तस्वीरें शामिल नहीं हैं। फ़ाइल को किसी निजी जगह रखें, क्योंकि इसमें किरायेदारों की निजी जानकारी है। सर्वर भी हर दिन अपने आप बैकअप रखता है।',
+    // Rent in instalments
+    'How you record rent': 'आप किराया कैसे दर्ज करते हैं', 'Simple: mark paid or set the amount paid': 'सरल: भुगतान हुआ चिह्नित करें या भुगतान की रकम लिखें',
+    'Instalments: set the total, then add each amount received': 'किस्तें: कुल रकम तय करें, फिर हर मिली रकम जोड़ें',
+    'Add rent for a month': 'किसी महीने का किराया जोड़ें', 'Total rent (₹) *': 'कुल किराया (₹) *', 'Received now (₹)': 'अभी मिला (₹)', 'Received on': 'मिलने की तारीख',
+    'Rent received': 'मिला किराया', '+ Add month': '+ महीना जोड़ें', 'Total rent': 'कुल किराया', 'Received': 'मिला', 'Remaining': 'बाकी',
+    '+ Add amount received': '+ मिली रकम जोड़ें', 'Amount received (₹) *': 'मिली रकम (₹) *', 'Add amount': 'रकम जोड़ें', 'Amount added': 'रकम जोड़ दी गई',
+    'Nothing received yet.': 'अभी कुछ नहीं मिला।', 'Reference / note': 'संदर्भ / नोट', 'UTR, cheque no. (optional)': 'UTR, चेक नंबर (वैकल्पिक)',
+    'Instalments: set the total rent, then add each amount as you receive it.': 'किस्तें: कुल किराया तय करें, फिर जैसे-जैसे पैसा मिले, हर रकम जोड़ें।',
+    'Amounts received are added one by one with “Add amount received”.': 'मिली रकम “मिली रकम जोड़ें” से एक-एक करके जोड़ी जाती है।',
     // Settings → Online payments (each owner's own Razorpay account)
     'Connected': 'जुड़ा हुआ', 'Disconnect': 'हटाएँ', 'Copy': 'कॉपी करें', 'Live': 'लाइव', 'Test mode': 'टेस्ट मोड',
     'Get paid straight to your bank': 'पैसा सीधे अपने बैंक खाते में पाएँ', 'Connect Razorpay': 'Razorpay जोड़ें', 'Replace keys': 'कुंजियाँ बदलें',

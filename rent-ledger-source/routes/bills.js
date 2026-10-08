@@ -2,7 +2,7 @@
 // now backed by the append-only ledger (amounts edit via adjustments, "mark
 // paid" records a payment, "delete" voids). Plus payment proofs and receipts.
 const v = require("../lib/validate");
-const { toPaise } = require("../lib/money");
+const { toPaise, toRupees } = require("../lib/money");
 const ledger = require("../services/ledger");
 const { billsView, rentView, electricityView, gasView, chargeExtras } = require("../services/views");
 const { decodeUpload } = require("../services/documents");
@@ -83,6 +83,31 @@ function register(app, { db, docs, todayFor, jsonLarge }) {
       if (data.amountPaid !== undefined) ledger.setPaidAmount(db, ctx, c.id, toPaise(data.amountPaid), { receivedOn: data.paidDate || today(req) }, today(req));
     });
     res.json(view(req, "rent", c.id));
+  });
+
+  // Instalments: add one amount received towards a rent entry. The total rent
+  // stays the same; what is left is shown as remaining.
+  app.post("/api/rent/:id/receive", manage, (req, res) => {
+    const c = checkKind(req, res, "rent");
+    if (!c) return;
+    if (c.voided_at) return res.status(400).json({ error: "This rent entry was deleted." });
+    const amount = v.money("Amount received")(req.body?.amount);
+    if (!(amount > 0)) return res.status(400).json({ error: "Enter the amount received." });
+    const amountPaise = toPaise(amount);
+    if (c.outstanding_paise <= 0) return res.status(400).json({ error: "This rent is already fully paid." });
+    if (amountPaise > c.outstanding_paise) return res.status(400).json({ error: `Only ₹${toRupees(c.outstanding_paise).toLocaleString("en-IN")} is remaining for this month.` });
+    const method = ["cash", "upi", "bank_transfer", "cheque", "other"].includes(req.body?.method) ? req.body.method : "cash";
+    const receivedOn = v.date({ label: "Received on" })(req.body?.receivedOn) || today(req);
+    const reference = v.text({ label: "Reference", max: 120 })(req.body?.reference);
+    const notes = v.text({ label: "Note", max: 300 })(req.body?.notes);
+    const ctx = ctxOf(req);
+    db.tx(() => {
+      ledger.recordPayment(db, ctx, {
+        tenantId: c.tenant_id || null, roomId: c.room_id, amountPaise, method, reference, receivedOn,
+        verification: "recorded", source: "manual", notes, allocations: [{ chargeId: c.id, amountPaise }],
+      }, today(req));
+    });
+    res.status(201).json(view(req, "rent", c.id));
   });
 
   app.delete("/api/rent/:id", manage, (req, res) => {

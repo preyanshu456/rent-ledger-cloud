@@ -50,6 +50,14 @@ function chargeExtras(db, chargeIds) {
                           WHERE p.provider = 'razorpay' AND al.amount_paise > 0 AND al.charge_id IN (${placeholders}) ORDER BY p.created_at`, ...chargeIds)) {
     extras.get(r.charge_id).onlinePayment = { provider: "razorpay", paymentId: r.provider_payment_id, orderId: r.provider_order_id, amount: toRupees(r.amount_paise), paidAt: r.created_at };
   }
+  // Every amount received for each bill (newest first), for the instalments view.
+  for (const r of db.all(`SELECT al.charge_id, p.id AS payment_id, p.received_on, p.method, p.reference, p.notes, p.created_at, SUM(al.amount_paise) AS net_paise
+                          FROM allocations al JOIN payments p ON p.id = al.payment_id
+                          WHERE al.charge_id IN (${placeholders}) AND NOT EXISTS (SELECT 1 FROM payment_reversals r WHERE r.payment_id = p.id)
+                          GROUP BY al.charge_id, p.id HAVING net_paise > 0 ORDER BY p.received_on DESC, p.created_at DESC`, ...chargeIds)) {
+    const e = extras.get(r.charge_id);
+    (e.receipts ||= []).push({ paymentId: r.payment_id, amount: toRupees(r.net_paise), receivedOn: r.received_on, method: r.method, reference: r.reference || "", notes: r.notes || "" });
+  }
   return extras;
 }
 
@@ -61,6 +69,7 @@ function baseBill(c, extra) {
     outstanding: toRupees(c.outstanding_paise), paid: toRupees(c.paid_paise), kind: c.kind, source: c.source, leaseId: c.lease_id || null,
     ...(extra.receipt ? { receipt: extra.receipt } : {}),
     ...(extra.onlinePayment ? { onlinePayment: extra.onlinePayment } : {}),
+    receipts: extra.receipts || [],
   };
 }
 
