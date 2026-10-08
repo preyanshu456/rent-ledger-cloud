@@ -1,5 +1,14 @@
 # Changelog
 
+## Each owner gets paid into their own bank account (October 2026)
+- **Settings → Online payments:** every owner connects their own Razorpay account (Key ID and Key Secret, checked with Razorpay before saving). Tenant payments go into that owner's Razorpay account and settle to the owner's own bank account. Rent Ledger never holds the money.
+- There is no shared account any more: an owner's tenants see the Pay button only after that owner connects.
+- Saved secrets are encrypted (AES-256-GCM, key from `SECRETS_KEY` or `DATA_DIR/secrets.key`), never sent to a browser and never exported. Only the owner can change them; changes are in the audit log.
+- Each owner has their own webhook URL and secret.
+- If Razorpay rejects an owner's keys, the owner is notified to reconnect.
+- Orders remember which key created them; payments started with the old server-wide keys still finish normally.
+- Failed checkouts are reported to the server (from the earlier Razorpay change).
+
 ## Faster on phones, ready for Android and iPhone apps (October 2026)
 - **Taps answer at once.** The tab you tap lights up immediately and the More panel closes straight away. Pages you have already opened appear instantly and refresh in the background; a new page shows a placeholder while it loads. Each page now waits for one round trip to the server instead of three. (Measured with a slow connection: from about 1.1–1.5 s to 0.07 s for pages seen before and 0.5 s for new ones.)
 - **Smoother scrolling on phones.** The live blur behind every card and panel is replaced on phones with solid frosted colours. Numbers no longer count up from zero.
