@@ -1844,3 +1844,39 @@ mark.tpl-fill { background: rgba(var(--g-mid), .18); color: inherit; padding: 0 
   .upi-dialog { max-height: calc(100dvh - 24px); }
   .upi-dialog h2 { font-size: 26px; }
 }
+
+
+/* Tenant portal: clear, professional visual hierarchy */
+.tenant-shell { background: #f4f7f8; color: #183343; }
+.tenant-top { position: sticky; top: 0; z-index: 20; min-height: 68px; height: auto; background: rgba(255,255,255,.97) !important; border-bottom: 1px solid #dce5e9 !important; box-shadow: 0 2px 10px rgba(20,45,60,.05); backdrop-filter: blur(12px) !important; }
+.tenant-main { max-width: 1040px; padding: 42px 28px 120px; background: transparent; }
+.tenant-main h1 { color: #16384a; font-family: var(--font-body); font-size: clamp(28px, 4vw, 36px); font-weight: 700; letter-spacing: -.04em; }
+.tenant-address { margin: 5px 0 24px; color: #5c7180; font-size: 14px; }
+.tenant-nav { gap: 8px; margin-bottom: 22px; }
+.tenant-nav button { min-height: 40px; padding: 8px 16px; border: 1px solid #d5e0e5; background: #fff; color: #385263; box-shadow: none; }
+.tenant-nav button.active { background: #145d78; border-color: #145d78; color: #fff; }
+.tenant-main .card, .tenant-balance, .pay-all-card { background: #fff !important; border: 1px solid #e0e8eb !important; border-radius: 14px !important; box-shadow: 0 4px 16px rgba(24,55,70,.055) !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+.tenant-main .card { padding: 22px 24px; }
+.tenant-main .card h3 { color: #19394a; font-family: var(--font-body); font-size: 17px; font-weight: 650; margin-bottom: 14px; }
+.pay-all-card { padding: 22px 24px; align-items: center; }
+.pay-all-card strong { color: #17384b; font-family: var(--font-body); font-size: 30px; font-weight: 700; letter-spacing: -.03em; }
+.pay-all-card small { color: #657987; line-height: 1.5; }
+.pay-all-card .btn, .tenant-ledger .btn { min-height: 42px; background: #145d78 !important; border-color: #145d78 !important; box-shadow: none !important; }
+.tenant-hero { border-radius: 16px; box-shadow: 0 8px 22px rgba(13,61,77,.12); }
+.tenant-hero strong { font-family: var(--font-body); font-size: 27px; font-weight: 700; }
+.tenant-bills { gap: 16px; }
+.tenant-ledger tr { border-color: #e8eef0; }
+.tenant-ledger td:nth-child(1) { color: #28495a; }
+.tenant-main details { border: 1px solid #e0e8eb; border-radius: 12px; background: #fff; }
+.tenant-main details > summary { color: #214356; font-weight: 650; }
+.tenant-main details[open] > summary { border-bottom: 1px solid #e8eef0; padding-bottom: 12px; margin-bottom: 12px; }
+.tenant-main :is(button, a):focus-visible { outline: 3px solid rgba(20,93,120,.3); outline-offset: 2px; }
+@media (max-width: 600px) {
+  .tenant-top { min-height: 60px; padding-inline: 16px; }
+    .tenant-main { padding: 28px 16px calc(104px + env(safe-area-inset-bottom)); }
+      .tenant-main .card, .pay-all-card { padding: 18px !important; }
+        .tenant-main .card h3 { font-size: 16px; }
+          .pay-all-card strong { font-size: 27px; }
+            .tenant-hero { border-radius: 14px; }
+            }
+            
