@@ -10,7 +10,7 @@ const state = {
 
 // ---------- colour themes ----------
 // The palettes themselves live in style.css (html[data-theme]); this list is
-// for the picker swatches, the browser bar colour and Razorpay Checkout.
+// for the picker swatches and the browser bar colour.
 const THEMES = [
   { id: 'indigo', name: 'Indigo', bar: '#424591', sidebar: '#32325d', primary: '#4e58af', warm: '#f69769' },
   { id: 'teal', name: 'Teal', bar: '#0b5968', sidebar: '#0c3e4c', primary: '#146f7b', warm: '#e7a25e' },
@@ -691,7 +691,7 @@ function renderTenantPortal() {
       ? `<button class="btn small pay-btn" data-tenant-action="pay-bill" data-kind="${type}" data-entry-id="${e.id}">Pay ${fmtMoney(due)}</button>`
       : '';
     const proof = e.onlinePayment && e.status === 'paid'
-      ? `<span class="paid-online" title="Razorpay ${esc(e.onlinePayment.paymentId || '')}">✓ Paid online</span>`
+      ? `<span class="paid-online" title="${esc(e.onlinePayment.paymentId || '')}">✓ Paid online</span>`
       : e.receipt
         ? `<button class="btn small secondary" data-tenant-action="view-receipt" data-receipt-id="${e.receipt.id}">View proof</button>`
         : `<button class="btn small secondary" data-tenant-action="upload-receipt" data-kind="${type}" data-entry-id="${e.id}">Add proof</button>`;
@@ -699,70 +699,147 @@ function renderTenantPortal() {
   }).join('') || `<tr><td colspan="4" class="text">No records yet</td></tr>`;
   const payAll = totalDue > 0
     ? (canPayOnline
-      ? `<section class="card pay-all-card"><div><span class="kicker">TOTAL PENDING</span><strong>${fmtMoney(totalDue)}</strong><small>Rent, electricity and gas together · paid securely via Razorpay (UPI, cards, net banking)</small></div><button class="btn pay-btn" data-tenant-action="pay-all">Pay all ${fmtMoney(totalDue)}</button></section>`
-      : `<section class="card pay-all-card muted"><div><span class="kicker">TOTAL PENDING</span><strong>${fmtMoney(totalDue)}</strong><small>Online payment isn't enabled by your owner yet. Pay them directly and add a payment proof below.</small></div></section>`)
+      ? `<section class="card pay-all-card"><div><span class="kicker">TOTAL PENDING</span><strong>${fmtMoney(totalDue)}</strong><small>Rent, electricity and gas together · pay with any UPI app (Google Pay, PhonePe, Paytm, BHIM…) straight to your owner</small></div><button class="btn pay-btn" data-tenant-action="pay-all">Pay all ${fmtMoney(totalDue)}</button></section>`
+      : `<section class="card pay-all-card muted"><div><span class="kicker">TOTAL PENDING</span><strong>${fmtMoney(totalDue)}</strong><small>Your owner hasn't added a UPI ID yet. Pay them directly and add a payment proof below.</small></div></section>`)
     : '';
   const table = (title, entries, type) => `<article class="card"><h3><span>${title}</span><small>Last 6 entries</small></h3><table class="ledger tenant-ledger"><thead><tr><th>Period</th><th>Amount</th><th>Status</th><th>Payment</th></tr></thead><tbody>${billRows(entries, type)}</tbody></table></article>`;
-  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><span>Welcome, <b>${esc(d.tenant.name)}</b></span>${window.RL_I18N ? RL_I18N.picker() : ''}${window.RL_EXT?.tenantBell ? RL_EXT.tenantBell() : ''}<button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main">${window.RL_EXT ? RL_EXT.tenantNav() : ''}<p class="kicker">YOUR HOME</p><h1>${esc(d.building.name)}</h1><p class="tenant-address">${esc(d.room.label)} · Floor ${d.room.floorNumber}</p><section class="tenant-hero"><div><span>Monthly rent</span><strong>${fmtMoney(d.room.monthlyRent)}</strong><small>Your fixed monthly rental</small></div><div><span>Rent outstanding</span><strong class="${rentDue ? 'is-due' : ''}">${fmtMoney(rentDue)}</strong><small>${rentDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Electricity outstanding</span><strong class="${elecDue ? 'is-due' : ''}">${fmtMoney(elecDue)}</strong><small>${elecDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Gas outstanding</span><strong class="${gasDue ? 'is-due' : ''}">${fmtMoney(gasDue)}</strong><small>${gasDue ? 'Payment pending' : 'All caught up'}</small></div></section>${payAll}${window.RL_EXT ? RL_EXT.tenantHomeExtras(d) : ''}<section class="tenant-bills">${table('Rent history', d.rent, 'rent')}${table('Electricity bills', d.electricity, 'electricity')}${table('Gas bills', gasEntries, 'gas')}</section><input type="file" data-receipt-file accept="image/jpeg,image/png,image/webp,application/pdf" hidden></main></div>`;
+  return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><span>Welcome, <b>${esc(d.tenant.name)}</b></span>${window.RL_I18N ? RL_I18N.picker() : ''}${window.RL_EXT?.tenantBell ? RL_EXT.tenantBell() : ''}<button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main">${window.RL_EXT ? RL_EXT.tenantNav() : ''}<p class="kicker">YOUR HOME</p><h1>${esc(d.building.name)}</h1><p class="tenant-address">${esc(d.room.label)} · Floor ${d.room.floorNumber}</p><section class="tenant-hero"><div><span>Monthly rent</span><strong>${fmtMoney(d.room.monthlyRent)}</strong><small>Your fixed monthly rental</small></div><div><span>Rent outstanding</span><strong class="${rentDue ? 'is-due' : ''}">${fmtMoney(rentDue)}</strong><small>${rentDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Electricity outstanding</span><strong class="${elecDue ? 'is-due' : ''}">${fmtMoney(elecDue)}</strong><small>${elecDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Gas outstanding</span><strong class="${gasDue ? 'is-due' : ''}">${fmtMoney(gasDue)}</strong><small>${gasDue ? 'Payment pending' : 'All caught up'}</small></div></section>${payAll}${renderPendingUpi(d.payments)}${window.RL_EXT ? RL_EXT.tenantHomeExtras(d) : ''}<section class="tenant-bills">${table('Rent history', d.rent, 'rent')}${table('Electricity bills', d.electricity, 'electricity')}${table('Gas bills', gasEntries, 'gas')}</section><input type="file" data-receipt-file accept="image/jpeg,image/png,image/webp,application/pdf" hidden></main></div>`;
 }
 
-// ---------- online payments (Razorpay Checkout) ----------
-let razorpayScriptPromise = null;
-function loadRazorpayCheckout() {
-  if (window.Razorpay) return Promise.resolve();
-  if (!razorpayScriptPromise) {
-    razorpayScriptPromise = new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.onload = () => resolve();
-      script.onerror = () => { razorpayScriptPromise = null; reject(new Error('Could not load Razorpay. Check your internet connection and try again.')); };
-      document.head.appendChild(script);
-    });
-  }
-  return razorpayScriptPromise;
-}
+// ---------- UPI payments (UPI Intent, no gateway) ----------
+// The server works out the amount and the owner's UPI ID; the browser only
+// says which bills. On a phone the upi:// link opens the tenant's UPI app
+// chooser (Google Pay, PhonePe, Paytm, BHIM, bank apps…). On a computer a QR
+// code is shown to scan with any UPI app. Nothing here marks a bill as paid:
+// the payment stays pending until the owner confirms they received it.
+const isPhone = () => isMobileApp || (navigator.userAgentData ? navigator.userAgentData.mobile : /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
 
-// body is either { items: [{ kind, id }] } or { all: true }. The server works
-// out the amount; the browser never sends one.
+// body is either { items: [{ kind, id }] } or { all: true }.
 async function startTenantPayment(body, button) {
   if (button) button.disabled = true;
   try {
-    const [order] = await Promise.all([api('POST', '/api/tenant/payments/order', body), loadRazorpayCheckout()]);
-    await new Promise((resolve) => {
-      let settled = false;
-      const finish = () => { if (!settled) { settled = true; resolve(); } };
-      const checkout = new window.Razorpay({
-        key: order.keyId,
-        order_id: order.orderId,
-        amount: order.amount,
-        currency: order.currency,
-        name: order.name,
-        description: order.description,
-        prefill: order.prefill,
-        theme: { color: themeInfo(currentThemeId()).bar },
-        handler: async (response) => {
-          try {
-            const result = await api('POST', '/api/tenant/payments/verify', response);
-            toast(`Payment of ${fmtMoney(result.amount)} received. Thank you!`);
-          } catch (error) { toast(error.message, true); }
-          finish();
-        },
-        modal: { ondismiss: () => { toast('Payment was not completed.'); finish(); } },
-      });
-      checkout.on('payment.failed', (response) => {
-        toast(response?.error?.description || 'Payment failed. You can try again.', true);
-        // Lets the owner see repeated failures; nothing is marked as paid.
-        api('POST', '/api/tenant/payments/failed', { razorpay_order_id: order.orderId, reason: response?.error?.description || response?.error?.reason || 'failed' }).catch(() => {});
-      });
-      checkout.open();
-    });
-    cache.tenantLoadedAt = 0;
-    render();
+    const pay = await api('POST', '/api/tenant/payments/upi', body);
+    await showUpiSheet(pay);
   } catch (error) {
     toast(error.message, true);
   } finally {
     if (button) button.disabled = false;
+    cache.tenantLoadedAt = 0;
+    render();
   }
+}
+
+function showUpiSheet(pay) {
+  return new Promise((resolve) => {
+    const phone = isPhone();
+    const previous = document.activeElement;
+    const wrap = document.createElement('div');
+    wrap.className = 'confirm-backdrop upi-backdrop';
+    const kind = { rent: 'Rent', electricity: 'Electricity', gas: 'Gas' };
+    const bills = pay.items.map((i) => `<li><span>${esc(kind[i.kind] || i.kind)} ${i.month ? `${MONTHS[i.month]} ${i.year}` : ''}</span><b>${fmtMoney(i.amount)}</b></li>`).join('');
+    wrap.innerHTML = `<div class="confirm-dialog upi-dialog" role="dialog" aria-modal="true" aria-labelledby="upi-title">
+      <button type="button" class="upi-close" data-upi="close" aria-label="Close">×</button>
+      <p class="kicker">PAY BY UPI</p>
+      <h2 id="upi-title">${fmtMoney(pay.amount)}</h2>
+      <p class="upi-to">To <b data-no-i18n>${esc(pay.payee.name)}</b><br><code data-no-i18n>${esc(pay.payee.upiId)}</code></p>
+      <ul class="upi-bills">${bills}</ul>
+      ${pay.warning ? `<p class="upi-warning">${esc(pay.warning)}</p>` : ''}
+      <div class="upi-step" data-upi-step="start">
+        ${phone ? `<a class="btn upi-open" href="${esc(pay.uri)}" data-upi="open">Open UPI app</a>
+          <p class="profile-note">Choose Google Pay, PhonePe, Paytm, BHIM or your bank's app, check the amount and enter your UPI PIN.</p>` : ''}
+        <div class="upi-qr ${phone ? 'is-collapsed' : ''}" data-upi-qr>
+          ${phone ? '<button type="button" class="btn small secondary" data-upi="show-qr">Show QR code instead</button>' : ''}
+          <div class="upi-qr-box" ${phone ? 'hidden' : ''}>${pay.qrSvg}<p class="profile-note">${phone ? 'Scan this from another phone, or take a screenshot and open it in your UPI app.' : 'Scan with any UPI app on your phone (Google Pay, PhonePe, Paytm, BHIM…), check the amount and enter your UPI PIN.'}</p></div>
+        </div>
+        <div class="upi-copy"><button type="button" class="btn small secondary" data-upi="copy-id">Copy UPI ID</button><button type="button" class="btn small secondary" data-upi="copy-amount">Copy amount</button></div>
+        <p class="upi-missing" data-upi-missing hidden>No UPI app opened? Install a UPI app, or scan the QR code / pay the UPI ID above from any UPI app.</p>
+      </div>
+      <div class="upi-step" data-upi-step="back" hidden>
+        <h3>Did you finish the payment?</h3>
+        <p class="profile-note">We can't see your UPI app, so tell us. Your owner will check that the money arrived.</p>
+      </div>
+      <p class="upi-ref">Reference <code data-no-i18n>${esc(pay.reference)}</code></p>
+      <p class="upi-pending-note">Your bills stay <b>pending</b> until your owner confirms the money reached them. This can take a while.</p>
+      <div class="confirm-actions">
+        <button type="button" class="btn secondary" data-upi="cancel">I didn't pay</button>
+        <button type="button" class="btn" data-upi="reported">I've paid</button>
+      </div>
+    </div>`;
+    document.body.appendChild(wrap);
+    const $ = (sel) => wrap.querySelector(sel);
+    let done = false;
+    let leftPage = false;
+    let missingTimer = null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(missingTimer);
+      document.removeEventListener('visibilitychange', onVisibility);
+      document.removeEventListener('keydown', onKey, true);
+      wrap.classList.add('is-leaving');
+      setTimeout(() => wrap.remove(), 200);
+      if (previous && previous.isConnected) previous.focus({ preventScroll: true });
+      resolve();
+    };
+    const showQr = () => { const box = $('.upi-qr-box'); if (box) box.hidden = false; $('[data-upi="show-qr"]')?.remove(); };
+    // The UPI app opening hides this page. If it's still showing after a few
+    // seconds, there is probably no UPI app: offer the QR code and UPI ID.
+    const launch = () => {
+      leftPage = false;
+      clearTimeout(missingTimer);
+      missingTimer = setTimeout(() => {
+        if (!leftPage && document.visibilityState === 'visible') { $('[data-upi-missing]').hidden = false; showQr(); }
+      }, 2500);
+    };
+    function onVisibility() {
+      if (document.visibilityState === 'hidden') { leftPage = true; clearTimeout(missingTimer); return; }
+      // Back from the UPI app: we don't know if they paid, so ask.
+      if (leftPage) { $('[data-upi-step="back"]').hidden = false; $('[data-upi-missing]').hidden = true; }
+    }
+    function onKey(event) { if (event.key === 'Escape') { event.preventDefault(); finish(); } }
+    document.addEventListener('visibilitychange', onVisibility);
+    document.addEventListener('keydown', onKey, true);
+    wrap.addEventListener('click', async (event) => {
+      if (event.target === wrap) return finish();
+      const action = event.target.closest('[data-upi]')?.dataset.upi;
+      if (!action) return;
+      if (action === 'open') return launch(); // the link itself opens the UPI app
+      if (action === 'close') return finish();
+      if (action === 'show-qr') return showQr();
+      if (action === 'copy-id') { await copyText(pay.payee.upiId); return toast('UPI ID copied'); }
+      if (action === 'copy-amount') { await copyText(String(pay.amount)); return toast('Amount copied'); }
+      const button = event.target.closest('button');
+      if (action === 'reported') {
+        await withBusy(button, async () => {
+          try {
+            await api('POST', `/api/tenant/payments/upi/${pay.id}/reported`, {});
+            toast('Thanks! Your owner has been told. The bill stays pending until they confirm it.');
+            finish();
+          } catch (error) { toast(error.message, true); }
+        });
+      }
+      if (action === 'cancel') {
+        await withBusy(button, async () => {
+          try { await api('POST', `/api/tenant/payments/upi/${pay.id}/cancel`, { reason: leftPage ? 'Not completed in UPI app' : 'Cancelled by tenant' }); } catch (error) { toast(error.message, true); return; }
+          toast('Payment not made. You can try again any time.');
+          finish();
+        });
+      }
+    });
+    (phone ? $('.upi-open') : $('[data-upi="reported"]'))?.focus({ preventScroll: true });
+    // On Android, try to open the UPI app chooser straight away; the button
+    // stays there in case the browser blocks it. iPhones show an error for
+    // links no app handles, so there the tenant taps the button themselves.
+    if (phone && !/iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent)) { launch(); try { window.location.href = pay.uri; } catch {} }
+  });
+}
+
+// Tenant home: UPI payments started but not yet confirmed by the owner.
+function renderPendingUpi(payments) {
+  const list = payments?.pending || [];
+  if (!list.length) return '';
+  const rows = list.map((p) => `<li><span><b>${fmtMoney(p.amount)}</b> · ${esc(displayDate(p.createdAt))} · <code data-no-i18n>${esc(p.reference)}</code></span><span class="stamp ${p.reportedAt ? 'partial' : 'due'}">${p.reportedAt ? 'Waiting for owner' : 'Not finished'}</span></li>`).join('');
+  return `<section class="card upi-pending-card"><h3>UPI payments not yet confirmed</h3><p class="profile-note">These stay pending until your owner confirms the money reached them. Bills are not marked paid automatically.</p><ul>${rows}</ul></section>`;
 }
 
 function displayDate(value) { return value ? new Date(value).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Not provided'; }
@@ -1409,25 +1486,28 @@ function renderRentTab(r, tenant) {
   `;
 }
 
-// Owner dashboard card: recent tenant payments received through Razorpay, or a
-// reminder of how to switch online payments on.
+// Owner dashboard card: UPI payments tenants started (not verified yet) and
+// any older online payments, or a reminder of how to switch UPI payments on.
 function renderOnlinePaymentsCard(d) {
   if (!d.onlinePaymentsEnabled) {
-    return `<div class="card"><h3>Online payments</h3><p class="profile-note">Tenants can't pay online yet. Connect your own Razorpay account in <strong>Settings → Online payments</strong> to show a <strong>Pay</strong> button on every pending bill. Payments settle straight to the bank account linked to your Razorpay account.</p></div>`;
+    return `<div class="card"><h3>UPI payments</h3><p class="profile-note">Tenants can't pay by UPI yet. Add your UPI ID in <strong>Settings → UPI payments</strong> to show a <strong>Pay</strong> button on every pending bill. Money goes straight to your UPI ID.</p></div>`;
   }
   const kindLabel = { rent: "Rent", electricity: "Electricity", gas: "Gas" };
+  const day = (v) => new Date(v).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
   const rows = (cache.payments || []).map((p) => `
     <tr>
-      <td class="text">${esc(new Date(p.paidAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }))}</td>
+      <td class="text">${esc(day(p.paidAt || p.createdAt))}</td>
       <td class="text">${esc(p.tenantName)}${p.roomLabel ? `<br><small>${esc(p.roomLabel)}</small>` : ""}</td>
       <td class="text">${p.items.map((i) => `${kindLabel[i.kind] || i.kind} ${MONTHS[i.month] || ""} ${i.year || ""}`).map(esc).join("<br>")}</td>
       <td>${fmtMoney(p.amount)}</td>
-      <td class="text"><small>${esc(p.method || "")}<br>${esc(p.razorpayPaymentId || "")}</small></td>
+      <td class="text">${p.provider === "upi"
+        ? `<span class="stamp ${p.reportedAt ? "partial" : "due"}">${p.reportedAt ? "Tenant says paid" : "Started"}</span><br><small>Not verified · <code data-no-i18n>${esc(p.reference)}</code></small>`
+        : `<span class="stamp paid">paid</span><br><small>${esc(p.method || "")} ${esc(p.providerPaymentId || "")}</small>`}</td>
     </tr>`).join("");
-  return `<div class="card"><h3>Online payments received <small style="font-weight:400">via Razorpay</small></h3>${rows ? `<table class="ledger"><thead><tr><th>Date</th><th>Tenant</th><th>Bills</th><th>Amount</th><th>Method / ID</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty-state">No online payments yet. Tenants will see a Pay button on each pending bill.</div>`}</div>`;
+  return `<div class="card"><h3>UPI payments <small style="font-weight:400">from tenants</small></h3><p class="profile-note">Rent Ledger can't see your bank, so these are <b>not verified</b>. When the money shows in your UPI or bank app, record it as usual (Payments → Record payment) and quote the reference.</p>${rows ? `<table class="ledger"><thead><tr><th>Date</th><th>Tenant</th><th>Bills</th><th>Amount</th><th>Status</th></tr></thead><tbody>${rows}</tbody></table>` : `<div class="empty-state">No UPI payments started yet. Tenants see a Pay button on each pending bill.</div>`}</div>`;
 }
 
-// Small note under a bill's period when the tenant paid it through Razorpay.
+// Small note under a bill's period when it was paid online (older Razorpay payments).
 function onlinePaymentNote(e) {
   if (!e.onlinePayment) return "";
   return `<br><small class="paid-online">✓ Paid online · ${esc(e.onlinePayment.paymentId || "")}</small>`;
