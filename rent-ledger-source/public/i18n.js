@@ -200,7 +200,9 @@
     'Amounts received are added one by one with “Add amount received”.': 'मिली रकम “मिली रकम जोड़ें” से एक-एक करके जोड़ी जाती है।',
     'Connected': 'जुड़ा हुआ', 'Disconnect': 'हटाएँ', 'Copy': 'कॉपी करें', 'Live': 'लाइव', 'Test mode': 'टेस्ट मोड',
     // UPI payments (UPI Intent)
-    'UPI payments': 'UPI भुगतान', 'PAY BY UPI': 'UPI से भुगतान', 'Open UPI app': 'UPI ऐप खोलें', 'Show QR code instead': 'इसके बजाय QR कोड दिखाएँ',
+    'UPI payments': 'UPI भुगतान', 'PAY BY UPI': 'UPI से भुगतान', 'Open UPI app': 'UPI ऐप खोलें', 'Pay with': 'इससे भुगतान करें', 'Other UPI app': 'दूसरा UPI ऐप',
+    "Tap the app you use, check the amount and enter your UPI PIN. “Other UPI app” opens your phone's usual UPI app (for example WhatsApp or your bank's app).": 'जिस ऐप से आप भुगतान करते हैं उसे दबाएँ, राशि जाँचें और अपना UPI PIN डालें। “दूसरा UPI ऐप” आपके फ़ोन का सामान्य UPI ऐप खोलता है (जैसे WhatsApp या आपके बैंक का ऐप)।',
+    'Show QR code instead': 'इसके बजाय QR कोड दिखाएँ',
     'Copy UPI ID': 'UPI ID कॉपी करें', 'Copy amount': 'राशि कॉपी करें', "I've paid": 'मैंने भुगतान कर दिया', "I didn't pay": 'मैंने भुगतान नहीं किया',
     'Did you finish the payment?': 'क्या आपने भुगतान पूरा किया?', 'UPI ID copied': 'UPI ID कॉपी हो गई', 'Amount copied': 'राशि कॉपी हो गई',
     "Choose Google Pay, PhonePe, Paytm, BHIM or your bank's app, check the amount and enter your UPI PIN.": 'Google Pay, PhonePe, Paytm, BHIM या अपने बैंक का ऐप चुनें, राशि जाँचें और अपना UPI PIN डालें।',
