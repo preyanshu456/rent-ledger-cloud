@@ -1,9 +1,8 @@
 const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
-const crypto = require("crypto");
 const { setupEnv, startServer } = require("./helpers");
 
-setupEnv({ RAZORPAY_WEBHOOK_SECRET: "test-webhook-secret" });
+setupEnv();
 let ctx;
 
 before(async () => { ctx = await startServer(); });
@@ -62,21 +61,22 @@ test("the web app is served for page routes", async () => {
   assert.match(res.text, /<div id="app">/);
 });
 
-test("Razorpay webhook rejects a wrong signature and accepts a correct one", async () => {
-  const body = JSON.stringify({ event: "payment.captured", payload: { payment: { entity: { order_id: "order_unknown", status: "captured", amount: 100, id: "pay_x" } } } });
-  const bad = await ctx.request("POST", "/api/payments/razorpay/webhook", { raw: body, headers: { "content-type": "application/json", "x-razorpay-signature": "bad" } });
-  assert.equal(bad.status, 400);
-  const sig = crypto.createHmac("sha256", "test-webhook-secret").update(body).digest("hex");
-  const good = await ctx.request("POST", "/api/payments/razorpay/webhook", { raw: body, headers: { "content-type": "application/json", "x-razorpay-signature": sig } });
-  assert.equal(good.status, 200);
-});
-
-test("online payment endpoints say payments are off when Razorpay keys are missing", async () => {
+test("no Razorpay endpoints remain", async () => {
+  // Old webhook URLs are not public any more (sign-in required) and the old
+  // checkout and key-management endpoints are gone.
+  for (const path of ["/api/payments/razorpay/webhook", "/api/payments/razorpay/webhook/some-org-id-123"]) {
+    const res = await ctx.request("POST", path, { body: {} });
+    assert.equal(res.status, 401, path);
+  }
   const { seedOwnerWorld, tenantLogin } = require("./helpers");
   const world = await seedOwnerWorld(ctx);
   const token = await tenantLogin(ctx, world);
-  const res = await ctx.request("POST", "/api/tenant/payments/order", { token, body: { all: true } });
-  assert.equal(res.status, 503);
+  for (const path of ["/api/tenant/payments/order", "/api/tenant/payments/verify", "/api/tenant/payments/failed"]) {
+    assert.equal((await ctx.request("POST", path, { token, body: { all: true } })).status, 404, path);
+  }
+  assert.equal((await ctx.request("GET", "/api/org/payment-account", { token: world.owner })).status, 404);
+  const page = await ctx.request("GET", "/");
+  assert.ok(!/razorpay/i.test(page.headers.get("content-security-policy-report-only") || page.headers.get("content-security-policy") || ""));
 });
 
 test("the Android and iPhone apps may call the API from inside the app; other sites may not", async () => {
