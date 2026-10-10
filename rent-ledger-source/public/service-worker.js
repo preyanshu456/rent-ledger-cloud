@@ -2,7 +2,7 @@
 // instantly even on a slow connection. Each time, a fresh copy is fetched in
 // the background and used from the next open. Money and records (/api/) are
 // never cached here.
-const CACHE_NAME = 'rent-ledger-shell-v12';
+const CACHE_NAME = 'rent-ledger-shell-v9';
 const APP_SHELL = ['/', '/index.html', '/style.css', '/app.js', '/i18n.js', '/modules.js', '/manifest.webmanifest', '/assets/rent-ledger-icon.svg', '/sw-register.js'];
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
@@ -20,6 +20,7 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   const sameOrigin = url.origin === self.location.origin;
   if (sameOrigin && url.pathname.startsWith('/api/')) return;
+  if (sameOrigin && url.pathname === '/admin.html') return;
   if (!sameOrigin && !FONT_HOSTS.includes(url.hostname)) return;
   // Pages of the app all use the same shell.
   const key = sameOrigin && req.mode === 'navigate' ? '/index.html' : req;
