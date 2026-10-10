@@ -1,5 +1,13 @@
 # Changelog
 
+## UPI payments replace Razorpay (October 2026)
+- **Razorpay is removed:** checkout, order/verify endpoints, webhooks, the per-owner key screen, the encrypted key store (`SECRETS_KEY`) and the Razorpay entries in the security policy. Saved Razorpay keys are deleted from the database. Old Razorpay payments and orders stay in the history unchanged.
+- **Pay by UPI:** the tenant's *Pay all* (or a single bill's *Pay*) asks the server for a `upi://pay` link. The server works out the amount from the ledger and the recipient from the tenant's owner (tenant → room → building → organisation); amounts or UPI IDs sent by the browser are ignored. The link has the owner's UPI ID and name, the exact amount, INR, a unique reference (`RL…`) and a short note.
+- On a phone the link opens the UPI app chooser (Google Pay, PhonePe, Paytm, BHIM, bank apps); no app is hard-coded. If nothing opens, the QR code and UPI ID are shown. On a computer a QR code is shown, with buttons to copy the UPI ID and amount.
+- **Settings → UPI payments:** owners save their UPI ID and the name shown in UPI apps. Owners who already wrote a UPI ID in "How to pay" are picked up automatically.
+- **No automatic verification in this phase.** A started payment is stored as *pending* and never marks a bill paid. The tenant can say "I've paid" (the owner is notified, it stays pending) or "I didn't pay". The same request is reused instead of duplicated, and older unfinished requests are replaced. Owners see pending UPI payments on the dashboard and record the money as usual once it arrives.
+- New dependency: `qrcode-generator` (MIT, no dependencies) for the QR code.
+
 ## Rent in instalments (October 2026)
 - New choice in **Settings → Organisation → How you record rent**: *Simple* (the original way: mark paid or set the amount paid) or *Instalments*.
 - With **Instalments**, each month on a room's **Rent** tab shows the **total rent**, **received** and **remaining**, with a progress bar and every amount received (date, how it was paid, reference).
