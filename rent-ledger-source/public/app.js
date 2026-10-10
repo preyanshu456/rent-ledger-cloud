@@ -708,11 +708,36 @@ function renderTenantPortal() {
 
 // ---------- UPI payments (UPI Intent, no gateway) ----------
 // The server works out the amount and the owner's UPI ID; the browser only
-// says which bills. On a phone the upi:// link opens the tenant's UPI app
-// chooser (Google Pay, PhonePe, Paytm, BHIM, bank apps…). On a computer a QR
+// says which bills. On a phone the tenant taps their UPI app (Google Pay,
+// PhonePe, Paytm, BHIM) or "Other UPI app" (the plain upi:// link). On a computer a QR
 // code is shown to scan with any UPI app. Nothing here marks a bill as paid:
 // the payment stays pending until the owner confirms they received it.
 const isPhone = () => isMobileApp || (navigator.userAgentData ? navigator.userAgentData.mobile : /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+
+// Android remembers one app (often WhatsApp) as the default for every upi://
+// link and then stops showing the chooser. So the tenant picks their app here:
+// an intent:// link naming the app's package opens exactly that app, with the
+// same server-built payment details (UPI ID, amount, reference). If the app
+// isn't installed, Android offers it in the Play Store. "Other UPI app" is the
+// plain upi:// link, which opens the phone's default UPI app or chooser.
+const UPI_APPS = [
+  { name: 'Google Pay', android: 'com.google.android.apps.nbu.paisa.user', ios: 'tez://upi/' },
+  { name: 'PhonePe', android: 'com.phonepe.app', ios: 'phonepe://' },
+  { name: 'Paytm', android: 'net.one97.paytm', ios: 'paytmmp://' },
+  { name: 'BHIM', android: 'in.org.npci.upiapp', ios: '' },
+];
+function upiAppLinks(uri) {
+  const ua = navigator.userAgent;
+  const ios = /iPhone|iPad|iPod/i.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua));
+  const android = !ios && /Android/i.test(ua);
+  // The installed app's web view can't open intent:// links: keep the plain link there.
+  if (isMobileApp || (!ios && !android) || !/^upi:\/\/pay\?/.test(uri)) return [];
+  const rest = uri.slice('upi://'.length); // "pay?pa=…&am=…"
+  return UPI_APPS.filter((a) => (android ? a.android : a.ios)).map((a) => ({
+    name: a.name,
+    href: android ? `intent://${rest}#Intent;scheme=upi;package=${a.android};end` : `${a.ios}${rest}`,
+  }));
+}
 
 // body is either { items: [{ kind, id }] } or { all: true }.
 async function startTenantPayment(body, button) {
@@ -732,6 +757,7 @@ async function startTenantPayment(body, button) {
 function showUpiSheet(pay) {
   return new Promise((resolve) => {
     const phone = isPhone();
+    const apps = phone ? upiAppLinks(pay.uri) : [];
     const previous = document.activeElement;
     const wrap = document.createElement('div');
     wrap.className = 'confirm-backdrop upi-backdrop';
@@ -745,7 +771,10 @@ function showUpiSheet(pay) {
       <ul class="upi-bills">${bills}</ul>
       ${pay.warning ? `<p class="upi-warning">${esc(pay.warning)}</p>` : ''}
       <div class="upi-step" data-upi-step="start">
-        ${phone ? `<a class="btn upi-open" href="${esc(pay.uri)}" data-upi="open">Open UPI app</a>
+        ${phone && apps.length ? `<h3 class="upi-pick">Pay with</h3>
+          <div class="upi-apps">${apps.map((a) => `<a class="btn upi-app" href="${esc(a.href)}" data-upi="open" data-no-i18n>${esc(a.name)}</a>`).join('')}<a class="btn secondary upi-app" href="${esc(pay.uri)}" data-upi="open">Other UPI app</a></div>
+          <p class="profile-note">Tap the app you use, check the amount and enter your UPI PIN. “Other UPI app” opens your phone's usual UPI app (for example WhatsApp or your bank's app).</p>` : ''}
+        ${phone && !apps.length ? `<a class="btn upi-open" href="${esc(pay.uri)}" data-upi="open">Open UPI app</a>
           <p class="profile-note">Choose Google Pay, PhonePe, Paytm, BHIM or your bank's app, check the amount and enter your UPI PIN.</p>` : ''}
         <div class="upi-qr ${phone ? 'is-collapsed' : ''}" data-upi-qr>
           ${phone ? '<button type="button" class="btn small secondary" data-upi="show-qr">Show QR code instead</button>' : ''}
@@ -826,11 +855,9 @@ function showUpiSheet(pay) {
         });
       }
     });
-    (phone ? $('.upi-open') : $('[data-upi="reported"]'))?.focus({ preventScroll: true });
-    // On Android, try to open the UPI app chooser straight away; the button
-    // stays there in case the browser blocks it. iPhones show an error for
-    // links no app handles, so there the tenant taps the button themselves.
-    if (phone && !/iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent)) { launch(); try { window.location.href = pay.uri; } catch {} }
+    // Nothing opens by itself: the tenant chooses the app (opening the default
+    // straight away sent everyone to whichever app the phone remembered).
+    (phone ? $('.upi-app, .upi-open') : $('[data-upi="reported"]'))?.focus({ preventScroll: true });
   });
 }
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## UPI: choose the app (October 2026)
+- On Android the Pay sheet now shows **Google Pay, PhonePe, Paytm, BHIM** and **Other UPI app**. Each app button opens exactly that app with the same server-built payment details, so a phone that remembers one app (for example WhatsApp) for all UPI links no longer sends every tenant there. On iPhone the Google Pay, PhonePe and Paytm buttons use those apps' own links.
+- The sheet no longer opens a UPI app by itself; the tenant taps the app they want.
+
 ## UPI payments replace Razorpay (October 2026)
 - **Razorpay is removed:** checkout, order/verify endpoints, webhooks, the per-owner key screen, the encrypted key store (`SECRETS_KEY`) and the Razorpay entries in the security policy. Saved Razorpay keys are deleted from the database. Old Razorpay payments and orders stay in the history unchanged.
 - **Pay by UPI:** the tenant's *Pay all* (or a single bill's *Pay*) asks the server for a `upi://pay` link. The server works out the amount from the ledger and the recipient from the tenant's owner (tenant → room → building → organisation); amounts or UPI IDs sent by the browser are ignored. The link has the owner's UPI ID and name, the exact amount, INR, a unique reference (`RL…`) and a short note.

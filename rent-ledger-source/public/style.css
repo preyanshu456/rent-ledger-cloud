@@ -1827,6 +1827,10 @@ mark.tpl-fill { background: rgba(var(--g-mid), .18); color: inherit; padding: 0 
 .upi-step { display: grid; gap: 10px; }
 .upi-step h3 { margin: 4px 0 0; font-size: 17px; }
 .upi-open { display: flex; justify-content: center; min-height: 48px; text-decoration: none; font-size: 16px; }
+.upi-pick { margin: 2px 0 0 !important; font-size: 15px !important; }
+.upi-apps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.upi-app { display: flex; align-items: center; justify-content: center; min-height: 48px; text-decoration: none; font-size: 15px; text-align: center; }
+.upi-app.secondary { grid-column: 1 / -1; }
 .upi-qr { display: grid; justify-items: center; gap: 8px; }
 .upi-qr-box { display: grid; justify-items: center; gap: 8px; text-align: center; }
 .upi-qr-box svg { width: min(240px, 70vw); height: auto; border-radius: 12px; border: 1px solid rgba(var(--c7), .18); }
