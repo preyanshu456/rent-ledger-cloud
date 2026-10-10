@@ -1084,11 +1084,10 @@
     if (tab === 'team' && isOwner()) d.team = await api('GET', '/api/team');
     if (tab === 'audit' && isOwner()) d.audit = await api('GET', '/api/audit?limit=200');
     if (tab === 'data' && isOwner()) d.backups = await api('GET', '/api/admin/backups');
-    if (tab === 'payments' && isOwner()) d.payAcct = await api('GET', '/api/org/payment-account');
   };
   X.views.settings = () => {
     const tab = s.settings.tab;
-    const tabs = [['org', 'Organisation'], ...(isOwner() ? [['payments', 'Online payments'], ['team', 'Team'], ['audit', 'Audit log'], ['data', 'Backups']] : [])];
+    const tabs = [['org', 'Organisation'], ...(isOwner() ? [['payments', 'UPI payments'], ['team', 'Team'], ['audit', 'Audit log'], ['data', 'Backups']] : [])];
     const o = d.org || { settings: {} };
     let body = '';
     if (tab === 'org') {
@@ -1109,9 +1108,9 @@
         </fieldset>
         ${isOwner() ? '<div class="form-actions"><button class="btn" type="submit">Save</button></div>' : '<p class="profile-note">Only the owner can change organisation settings.</p>'}</form>`)
         + `<div class="two-col">${card('Language', `<p class="profile-note">For your screens on this device.</p>${window.RL_I18N ? RL_I18N.picker() : ''}`)}${typeof themePicker === 'function' ? themePicker() : ''}</div>`
-        + (isOwner() && cache.dashboard && !cache.dashboard.onlinePaymentsEnabled ? card('Online payments', '<p class="profile-note">Tenants can’t pay online yet. Connect your own Razorpay account so their payments go straight to your bank account.</p><div class="form-actions"><button class="btn small" data-action="set-state" data-key="settings.tab" data-value="payments">Set up online payments</button></div>') : '');
+        + (isOwner() && !o.upi ? card('UPI payments', '<p class="profile-note">Tenants can’t pay by UPI yet. Add your UPI ID so their Pay button opens their UPI app and pays you directly.</p><div class="form-actions"><button class="btn small" data-action="set-state" data-key="settings.tab" data-value="payments">Add UPI ID</button></div>') : '');
     } else if (tab === 'payments') {
-      body = paymentAccountView(d.payAcct || {});
+      body = upiSettingsView(o);
     } else if (tab === 'team') {
       const t = d.team || { members: [], invites: [] };
       body = card('Team', `${table(['Name', 'Contact', 'Role', 'Since', ''], t.members.map((m) => [h(m.name), h(m.contact), `${h(label(m.role))}${m.disabled ? ` ${stamp('void')}` : ''}`, h(m.createdAt.slice(0, 10)), m.role === 'manager' && !m.disabled ? `<button class="btn small danger" data-action="team-disable" data-id="${m.id}">Remove access</button>` : '']))}
@@ -1125,40 +1124,27 @@
     }
     return `${page('Settings', '')}<div class="tab-row">${tabs.map(([k, t]) => `<button class="tab-btn ${tab === k ? 'active' : ''}" data-action="set-state" data-key="settings.tab" data-value="${k}">${t}</button>`).join('')}</div>${body}`;
   };
-  // ---------- each owner's own Razorpay account ----------
-  function paymentAccountView(a) {
-    const hook = `${location.origin}${a.webhookPath || ''}`;
-    const status = a.connected
-      ? card('Connected', `<p class="pay-acct-status"><span class="stamp ${a.mode === 'live' ? 'paid' : 'partial'}">${a.mode === 'live' ? 'Live' : 'Test mode'}</span> <code>${h(a.keyId)}</code></p>
-          <p class="profile-note">Your tenants’ online payments go into this Razorpay account and settle to the bank account you linked in Razorpay (Account &amp; Settings → Bank account). ${a.mode === 'test' ? '<b>Test mode:</b> no real money moves. Switch to your live keys when you are ready.' : ''}</p>
-          <p class="profile-note">Checked with Razorpay on ${h(String(a.verifiedAt || '').slice(0, 10))}. Webhook backup: <b>${a.webhookConfigured ? 'on' : 'off'}</b>.</p>
-          <div class="form-actions"><button class="btn small danger" data-action="pay-acct-disconnect">Disconnect</button></div>`)
-      : card('Get paid straight to your bank', `<p class="profile-note">${a.needsReentry ? '<b>Please enter your keys again.</b> The saved keys can no longer be read on this server. ' : ''}Tenants see a <b>Pay</b> button only after you connect your own Razorpay account. Their money goes into your account and Razorpay settles it to <b>your</b> bank account. Rent Ledger never holds it.</p>
-          <ol class="steps-list"><li>Sign up at razorpay.com and finish KYC. Add your bank account under <b>Account &amp; Settings → Bank account</b>.</li><li>Go to <b>Account &amp; Settings → API Keys</b> and generate a key (use Test mode first if you like).</li><li>Paste the Key ID and Key Secret below. Rent Ledger checks them with Razorpay before saving.</li></ol>`);
-    const form = card(a.connected ? 'Replace keys' : 'Connect Razorpay', `<form data-submit="pay-acct-save" autocomplete="off"><div class="form-grid cols-2">
-        ${field('Key ID *', `<input name="keyId" required maxlength="60" placeholder="rzp_live_…" spellcheck="false" autocapitalize="off" value="">`)}
-        ${field('Key Secret *', '<input name="keySecret" type="password" required maxlength="64" autocomplete="new-password" spellcheck="false">')}
-        ${field('Webhook secret (optional)', `<input name="webhookSecret" type="password" maxlength="200" autocomplete="new-password" placeholder="${a.webhookConfigured ? 'Leave empty to keep the saved one' : ''}">`, '1 / -1')}
-      </div><p class="profile-note">The Key Secret is stored encrypted and is never shown again or sent to any browser.</p>
-      <div class="form-actions"><button class="btn" type="submit">Check and save</button></div></form>`);
-    const webhook = card('Webhook backup (recommended)', `<p class="profile-note">If a tenant closes the app right after paying, Razorpay tells Rent Ledger directly. In Razorpay go to <b>Account &amp; Settings → Webhooks → Add new webhook</b>, paste this URL, choose a secret, tick <b>payment.captured</b>, <b>payment.failed</b> and <b>order.paid</b>, then save the same secret above.</p>
-      <div class="copy-row"><code class="details">${h(hook)}</code><button class="btn small secondary" data-action="copy-value" data-text="${h(hook)}">Copy</button></div>`);
-    return status + form + webhook;
+  // ---------- UPI payments: the owner's own UPI ID ----------
+  function upiSettingsView(o) {
+    const p = o.settings.payments || {};
+    const u = o.upi;
+    const status = u
+      ? card('Tenants pay you by UPI', `<p class="pay-acct-status"><span class="stamp paid">On</span> <code data-no-i18n>${h(u.upiId)}</code> · <span data-no-i18n>${h(u.payeeName)}</span></p>
+          ${u.source === 'payment_details' ? '<p class="profile-note">Taken from the <b>How to pay</b> text in Organisation settings. Save it below to set it on purpose.</p>' : ''}
+          <p class="profile-note">The <b>Pay</b> button opens the tenant’s UPI app (Google Pay, PhonePe, Paytm, BHIM…) with your UPI ID and the exact amount filled in. On a computer they get a QR code. The money goes straight to you; Rent Ledger never holds it and charges no fee.</p>
+          <p class="profile-note"><b>Payments are not verified automatically yet.</b> A started payment shows as pending on your dashboard. When the money reaches your UPI or bank app, record it as usual (Payments → Record payment).</p>`)
+      : card('Get paid by UPI', '<p class="profile-note">Add the UPI ID you want tenants to pay into. Their <b>Pay</b> button then opens their own UPI app with the amount filled in; they only enter their UPI PIN.</p>');
+    const form = card('Your UPI ID', `<form data-submit="upi-save" autocomplete="off"><div class="form-grid cols-2">
+        ${field('UPI ID', `<input name="upiId" maxlength="300" placeholder="yourname@okaxis" spellcheck="false" autocapitalize="off" value="${h(p.upiId || '')}">`)}
+        ${field('Name shown in UPI apps', `<input name="payeeName" maxlength="50" placeholder="${h(u?.payeeName || o.name || '')}" value="${h(p.payeeName || '')}">`)}
+      </div><p class="profile-note">Use a UPI ID in your own name. Leave it empty to use the UPI ID written in “How to pay”, if any.</p>
+      <div class="form-actions"><button class="btn" type="submit">Save</button></div></form>`);
+    return status + form;
   }
-  X.submits['pay-acct-save'] = async (data, form) => {
-    const body = { keyId: (data.keyId || '').trim(), keySecret: (data.keySecret || '').trim() };
-    if ((data.webhookSecret || '').trim()) body.webhookSecret = data.webhookSecret.trim();
-    if (body.keyId.startsWith('rzp_live_') && !(await confirmDialog('Tenants will pay real money into this Razorpay account.', { title: 'Use live keys?', confirmLabel: 'Use live keys' }))) return false;
-    d.payAcct = await api('PUT', '/api/org/payment-account', body);
-    form.reset();
-    cache.dashboard = null;
-    toast('Razorpay connected. Tenants can now pay online.');
-  };
-  X.actions['pay-acct-disconnect'] = async () => {
-    if (!(await confirmDialog('Tenants will no longer see the Pay button until you connect an account again.', { title: 'Disconnect Razorpay?', confirmLabel: 'Disconnect', danger: true }))) return false;
-    d.payAcct = await api('DELETE', '/api/org/payment-account');
-    cache.dashboard = null;
-    toast('Razorpay disconnected');
+  X.submits['upi-save'] = async (data) => {
+    d.org = await api('PUT', '/api/org', { settings: { payments: { upiId: (data.upiId || '').trim(), payeeName: (data.payeeName || '').trim() } } });
+    cache.org = null; cache.dashboard = null;
+    toast(d.org.upi ? 'UPI ID saved. Tenants can now pay by UPI.' : 'Saved. Tenants can’t pay by UPI until you add a UPI ID.');
   };
   X.actions['copy-value'] = async (el) => {
     try { await navigator.clipboard.writeText(el.dataset.text); toast('Copied'); } catch { toast('Copy failed. Select the text and copy it.', true); }
