@@ -76,6 +76,9 @@ const DEFAULT_SETTINGS = {
   // rentMode: "simple" = mark paid / set the amount paid (the original way);
   // "instalments" = set the total rent, then add each amount received.
   bills: { paymentDetails: "", rentMode: "simple" },
+  // UPI Intent: tenants' "Pay" buttons open their UPI app paying this UPI ID.
+  // Empty = use the UPI ID written in bills.paymentDetails, if there is one.
+  payments: { upiId: "", payeeName: "" },
   // The AI model is off until the owner turns it on (and a key is configured).
   assistant: { aiEnabled: false },
 };
@@ -87,6 +90,7 @@ function mergeSettings(stored) {
     retention: { ...DEFAULT_SETTINGS.retention, ...(s.retention || {}) },
     receipts: { ...DEFAULT_SETTINGS.receipts, ...(s.receipts || {}) },
     bills: { ...DEFAULT_SETTINGS.bills, ...(s.bills || {}) },
+    payments: { ...DEFAULT_SETTINGS.payments, ...(s.payments || {}) },
     assistant: { ...DEFAULT_SETTINGS.assistant, ...(s.assistant || {}) },
   };
 }
