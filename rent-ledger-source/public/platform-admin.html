@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#172b4d">
+  <title>Property manager · Rent Ledger</title>
+  <style>
+    :root{color-scheme:light;--ink:#172b4d;--muted:#64748b;--line:#dbe3ed;--paper:#f5f7fa;--blue:#2457a7;--red:#a43b3b;--green:#176b52}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:#1b2638;font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}header{background:var(--ink);color:white;padding:22px max(20px,calc((100% - 1080px)/2));display:flex;align-items:center;justify-content:space-between;gap:16px}header h1{font-size:20px;margin:0}header p{margin:2px 0 0;color:#d3deec;font-size:13px}.wrap{max-width:1080px;margin:28px auto;padding:0 18px}.card{background:white;border:1px solid var(--line);border-radius:14px;padding:20px;margin-bottom:18px;box-shadow:0 3px 12px #172b4d0a}.card h2{font-size:17px;margin:0 0 14px;color:var(--ink)}.muted{color:var(--muted);font-size:13px}.notice{padding:12px 14px;border-radius:9px;background:#eef4fc;color:#284d7b;margin:0 0 16px}.error{background:#fff1f0;color:#8b2925}.success{background:#eaf7f2;color:#145c46}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.field{display:flex;flex-direction:column;gap:5px}.field.full{grid-column:1/-1}label{font-size:13px;color:#475569;font-weight:600}input,select,textarea{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:10px 11px;font:inherit;background:white;color:#1b2638}textarea{min-height:70px;resize:vertical}button{border:0;border-radius:8px;padding:10px 15px;font:600 14px system-ui;cursor:pointer;background:var(--blue);color:#fff}button.secondary{background:#e8eef7;color:#213e69}button.danger{background:#fff0ef;color:var(--red);border:1px solid #f0c8c5}button:disabled{opacity:.55;cursor:wait}.row{display:flex;align-items:center;justify-content:space-between;gap:12px}.actions{display:flex;gap:10px;margin-top:15px;align-items:center}.owner-select{max-width:520px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:10px 8px;border-bottom:1px solid var(--line);vertical-align:middle}th{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}.badge{display:inline-block;border-radius:20px;padding:3px 9px;background:#eaf7f2;color:var(--green);font-size:12px}.badge.former{background:#edf0f4;color:#596579}.hidden{display:none!important}footer{padding:8px 0 28px;text-align:center;color:var(--muted);font-size:12px}@media(max-width:650px){header{padding:18px}.wrap{margin:18px auto}.grid{grid-template-columns:1fr}.field.full{grid-column:auto}.card{padding:16px}.row{align-items:flex-start;flex-direction:column}.owner-select{max-width:none}}
+  </style>
+</head>
+<body>
+  <header><div><h1>Property manager</h1><p>Private owner-account operations</p></div><button id="signOut" class="secondary hidden" type="button">Sign out</button></header>
+  <main class="wrap">
+    <div id="notice" class="notice hidden" role="status" aria-live="polite"></div>
+    <section id="loginCard" class="card hidden">
+      <h2>Sign in</h2>
+      <p class="muted">Use the account that has been designated for property-manager access.</p>
+      <form id="loginForm" class="grid">
+        <div class="field"><label for="contact">Account contact</label><input id="contact" name="contact" autocomplete="username" required></div>
+        <div class="field"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
+        <div class="field full"><button type="submit">Sign in</button></div>
+      </form>
+    </section>
+    <section id="appArea" class="hidden">
+      <section class="card">
+        <div class="row"><div><h2>Choose an owner account</h2><p class="muted">Only the selected owner’s records are shown.</p></div><select id="owners" class="owner-select" aria-label="Owner account"></select></div>
+      </section>
+      <section class="card">
+        <h2>Add tenant</h2>
+        <form id="tenantForm" class="grid">
+          <div class="field"><label for="tenantRoom">Room</label><select id="tenantRoom" required></select></div>
+          <div class="field"><label for="tenantName">Tenant name</label><input id="tenantName" name="name" maxlength="120" required></div>
+          <div class="field"><label for="tenantMobile">Mobile number</label><input id="tenantMobile" name="mobile" inputmode="tel" required></div>
+          <div class="field"><label for="tenantMoveIn">Move-in date</label><input id="tenantMoveIn" name="moveInDate" type="date"></div>
+          <div class="field"><label for="tenantDeposit">Security deposit (₹)</label><input id="tenantDeposit" name="deposit" type="number" min="0" step="0.01"></div>
+          <div class="field full"><button type="submit">Add tenant</button></div>
+        </form>
+      </section>
+      <section class="card">
+        <h2>Generate electricity bill</h2>
+        <form id="billForm" class="grid">
+          <div class="field"><label for="billRoom">Room</label><select id="billRoom" required></select></div>
+          <div class="field"><label for="billPeriod">Bill month</label><input id="billPeriod" type="month" required></div>
+          <div class="field"><label for="previousReading">Previous meter reading</label><input id="previousReading" type="number" min="0" step="0.01" required><span class="muted" id="readingHint">Enter the previous meter value.</span></div>
+          <div class="field"><label for="currentReading">Current meter reading</label><input id="currentReading" type="number" min="0" step="0.01" required></div>
+          <div class="field"><label for="unitRate">Rate per unit (₹)</label><input id="unitRate" type="number" min="0" step="0.01" required></div>
+          <div class="field"><label for="billDue">Due date</label><input id="billDue" type="date"></div>
+          <div class="field"><label>Estimated bill</label><output id="billEstimate" aria-live="polite">Enter readings and rate</output></div>
+          <div class="field full"><label for="billNotes">Note (optional)</label><textarea id="billNotes" maxlength="1000"></textarea></div>
+          <div class="field full"><button id="createBill" type="submit">Create electricity bill</button><p class="muted">The bill is saved to this owner’s account as due. Payments are never marked paid automatically.</p></div>
+        </form>
+      </section>
+      <section class="card"><h2>Selected room’s electricity history</h2><p class="muted" id="electricityHistoryHint">Choose a room to see its existing readings and bills.</p><div class="table-wrap"><table><thead><tr><th>Period</th><th>Previous</th><th>Current</th><th>Units</th><th>Rate</th><th>Bill</th><th>Status</th></tr></thead><tbody id="electricityRows"></tbody></table></div></section>
+      <section class="card">
+        <h2>Tenants</h2>
+        <div class="table-wrap"><table><thead><tr><th>Tenant</th><th>Room</th><th>Mobile</th><th>Status</th><th></th></tr></thead><tbody id="tenantRows"></tbody></table></div>
+        <p id="emptyTenants" class="muted hidden">No tenant records for this owner.</p>
+      </section>
+    </section>
+    <footer>Tenant removal marks the tenancy as moved out. Financial history is retained; login and contact/ID details are cleared.</footer>
+  </main>
+  <script>
+    (() => {
+      let token = "";
+      let selectedOrg = "";
+      let current = null;
+      const $ = (id) => document.getElementById(id);
+      const notice = (text, type = "") => { const el = $("notice"); el.textContent = text; el.className = `notice ${type}`; };
+      const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+      async function api(path, options = {}) {
+        const headers = { ...(options.body ? { "content-type": "application/json" } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}), ...(options.headers || {}) };
+        const response = await fetch(path, { ...options, headers, credentials: "same-origin" });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.error || "Request failed. Please try again.");
+        return body;
+      }
+      function formData(form) { return Object.fromEntries(new FormData(form).entries()); }
+      const today = new Date();
+      $("billPeriod").value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+      function roomLabel(room) {
+        const building = current.buildings.find((item) => item.id === room.buildingId);
+        return `${building?.name || "Building"} · ${room.label}${room.tenant ? ` — ${room.tenant.name}` : " — vacant"}${room.electricityOnly ? " (owner unit)" : ""}`;
+      }
+      function fillRooms(id, predicate = () => true) {
+        const select = $(id);
+        const options = current.rooms.filter(predicate).map((room) => `<option value="${esc(room.id)}">${esc(roomLabel(room))}</option>`).join("");
+        select.innerHTML = `<option value="">Select a room</option>${options}`;
+      }
+      const money = (value) => `₹${Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+      function updateEstimate() {
+        const previous = Number($("previousReading").value);
+        const currentReading = Number($("currentReading").value);
+        const rate = Number($("unitRate").value);
+        const valid = [$("previousReading").value, $("currentReading").value, $("unitRate").value].every((value) => value !== "")
+          && currentReading >= previous && rate >= 0;
+        $("billEstimate").textContent = valid ? `${currentReading - previous} units · ${money((currentReading - previous) * rate)}` : "Check readings and rate";
+        $("createBill").disabled = !valid || !$("billRoom").value || !$("billPeriod").value;
+      }
+      async function loadElectricityHistory(roomId) {
+        const rows = $("electricityRows");
+        rows.innerHTML = "";
+        if (!roomId) {
+          $("electricityHistoryHint").textContent = "Choose a room to see its existing readings and bills.";
+          $("previousReading").value = "0";
+          $("readingHint").textContent = "No room selected.";
+          updateEstimate();
+          return;
+        }
+        $("electricityHistoryHint").textContent = "Loading this room’s saved bill history…";
+        try {
+          const entries = await api(`/api/platform-admin/organizations/${encodeURIComponent(selectedOrg)}/electricity?roomId=${encodeURIComponent(roomId)}`);
+          rows.innerHTML = entries.map((entry) => `<tr><td>${esc(entry.periodMonth)}/${esc(entry.periodYear)}</td><td>${esc(entry.prevReading)}</td><td>${esc(entry.currReading)}</td><td>${esc(entry.unitsConsumed)}</td><td>${money(entry.ratePerUnit)}</td><td>${money(entry.amount)}</td><td>${esc(entry.status)}</td></tr>`).join("");
+          const latest = entries[0];
+          if (latest) {
+            $("previousReading").value = latest.currReading;
+            $("readingHint").textContent = `Carried forward from ${latest.periodMonth}/${latest.periodYear}.`;
+            if (!$("unitRate").value && latest.ratePerUnit) $("unitRate").value = latest.ratePerUnit;
+            $("electricityHistoryHint").textContent = `${entries.length} existing bill${entries.length === 1 ? "" : "s"} for this room. Latest reading is carried forward; you can change it if needed.`;
+          } else {
+            $("previousReading").value = "0";
+            $("readingHint").textContent = "No earlier electricity bill; starting at 0. Update this if the meter already has a reading.";
+            $("electricityHistoryHint").textContent = "No electricity bills recorded for this room yet.";
+          }
+          updateEstimate();
+        } catch (error) {
+          $("electricityHistoryHint").textContent = error.message;
+        }
+      }
+      function renderTenants() {
+        const roomMap = new Map(current.rooms.map((room) => [room.id, room]));
+        $("tenantRows").innerHTML = current.tenants.map((tenant) => {
+          const room = roomMap.get(tenant.roomId);
+          const building = room && current.buildings.find((item) => item.id === room.buildingId);
+          const label = room ? `${building?.name || "Building"} · ${room.label}` : "—";
+          const action = tenant.active ? `<button class="danger" type="button" data-move-out="${esc(tenant.id)}">Move out</button>` : "";
+          return `<tr><td>${esc(tenant.name)}</td><td>${esc(label)}</td><td>${esc(tenant.mobile || "—")}</td><td><span class="badge ${tenant.active ? "" : "former"}">${tenant.active ? "Active" : "Moved out"}</span></td><td>${action}</td></tr>`;
+        }).join("");
+        $("emptyTenants").classList.toggle("hidden", current.tenants.length > 0);
+      }
+      async function loadOrganization(orgId) {
+        selectedOrg = orgId;
+        current = await api(`/api/platform-admin/organizations/${encodeURIComponent(orgId)}`);
+        fillRooms("tenantRoom", (room) => !room.electricityOnly && !room.tenant);
+        fillRooms("billRoom");
+        renderTenants();
+        await loadElectricityHistory($("billRoom").value);
+      }
+      async function start() {
+        try {
+          const organizations = await api("/api/platform-admin/organizations");
+          if (!organizations.length) throw new Error("There are no owner accounts yet.");
+          $("owners").innerHTML = organizations.map((org) => `<option value="${esc(org.id)}">${esc(org.owner_name || "Owner")} · ${esc(org.name)}</option>`).join("");
+          $("loginCard").classList.add("hidden");
+          $("appArea").classList.remove("hidden");
+          $("signOut").classList.remove("hidden");
+          await loadOrganization(organizations[0].id);
+        } catch (error) {
+          if (!token && /sign in/i.test(error.message)) {
+            $("loginCard").classList.remove("hidden");
+            return;
+          }
+          $("appArea").classList.add("hidden");
+          if (/property manager access required/i.test(error.message) || /not found/i.test(error.message)) {
+            if (!token) $("loginCard").classList.remove("hidden");
+            notice("This account is not enabled for property-manager access. Ask the site administrator to configure the designated account.", "error");
+          } else notice(error.message, "error");
+        }
+      }
+      $("loginForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        try {
+          const credentials = formData(event.currentTarget);
+          const result = await api("/api/auth/login", { method: "POST", body: JSON.stringify(credentials) });
+          token = result.token;
+          await start();
+        } catch (error) { notice(error.message, "error"); }
+      });
+      $("owners").addEventListener("change", async (event) => {
+        try { await loadOrganization(event.target.value); notice("Owner account loaded.", "success"); }
+        catch (error) { notice(error.message, "error"); }
+      });
+      $("billRoom").addEventListener("change", (event) => loadElectricityHistory(event.target.value));
+      ["previousReading", "currentReading", "unitRate", "billPeriod"].forEach((id) => $(id).addEventListener("input", updateEstimate));
+      $("billPeriod").addEventListener("change", updateEstimate);
+      $("tenantForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const data = formData(event.currentTarget);
+        data.roomId = $("tenantRoom").value;
+        try {
+          await api(`/api/platform-admin/organizations/${encodeURIComponent(selectedOrg)}/tenants`, { method: "POST", body: JSON.stringify(data) });
+          event.currentTarget.reset();
+          await loadOrganization(selectedOrg);
+          notice("Tenant added. Their financial records remain in the selected owner account.", "success");
+        } catch (error) { notice(error.message, "error"); }
+      });
+      $("billForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const [year, month] = $("billPeriod").value.split("-");
+        const roomId = $("billRoom").value;
+        const room = current.rooms.find((item) => item.id === roomId);
+        const data = {
+          roomId, tenantId: room?.tenant?.id || "", year, month,
+          prevReading: $("previousReading").value, currReading: $("currentReading").value,
+          ratePerUnit: $("unitRate").value, dueDate: $("billDue").value, notes: $("billNotes").value,
+        };
+        try {
+          const bill = await api(`/api/platform-admin/organizations/${encodeURIComponent(selectedOrg)}/electricity`, { method: "POST", body: JSON.stringify(data) });
+          $("currentReading").value = "";
+          $("billNotes").value = "";
+          await loadElectricityHistory(roomId);
+          updateEstimate();
+          notice(`Bill created: ${bill.unitsConsumed} units · ₹${(bill.amountPaise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}. It is recorded as due; no payment is auto-verified.`, "success");
+        } catch (error) { notice(error.message, "error"); }
+      });
+      $("tenantRows").addEventListener("click", async (event) => {
+        const button = event.target.closest("[data-move-out]");
+        if (!button) return;
+        if (!window.confirm("Mark this tenant as moved out? Their login and contact/ID details will be removed. Existing rent and bill history will be retained.")) return;
+        try {
+          await api(`/api/platform-admin/organizations/${encodeURIComponent(selectedOrg)}/tenants/${encodeURIComponent(button.dataset.moveOut)}/move-out`, { method: "POST", body: JSON.stringify({}) });
+          await loadOrganization(selectedOrg);
+          notice("Tenant marked as moved out. Financial history was retained.", "success");
+        } catch (error) { notice(error.message, "error"); }
+      });
+      $("signOut").addEventListener("click", async () => {
+        try { await api("/api/auth/logout", { method: "POST", body: JSON.stringify({}) }); } catch {}
+        token = "";
+        $("appArea").classList.add("hidden");
+        $("signOut").classList.add("hidden");
+        $("loginCard").classList.remove("hidden");
+        notice("Signed out.", "success");
+      });
+      start();
+    })();
+  </script>
+</body>
+</html>

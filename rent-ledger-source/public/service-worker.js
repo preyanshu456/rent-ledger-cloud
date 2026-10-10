@@ -20,7 +20,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   const sameOrigin = url.origin === self.location.origin;
   if (sameOrigin && url.pathname.startsWith('/api/')) return;
-  if (sameOrigin && url.pathname === '/admin.html') return;
+  if (sameOrigin && ['/admin.html', '/platform-admin.html'].includes(url.pathname)) return;
+  if (sameOrigin && url.pathname === '/platform-admin.html') return;
   if (!sameOrigin && !FONT_HOSTS.includes(url.hostname)) return;
   // Pages of the app all use the same shell.
   const key = sameOrigin && req.mode === 'navigate' ? '/index.html' : req;
