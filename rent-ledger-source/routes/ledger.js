@@ -110,7 +110,7 @@ function register(app, { db, todayFor }) {
     res.json({ ...paymentView(p, names(p)), allocations: allocations.map((a) => ({ chargeId: a.charge_id, amount: toRupees(a.amount_paise), label: ledger.chargeLabel(a), note: a.note, at: a.created_at })) });
   });
 
-  // Record money received outside Razorpay (cash, UPI to the owner's account,
+  // Record money the owner received (cash, UPI to the owner's account,
   // bank transfer, cheque). "recorded" = entered by staff without external proof.
   app.post("/api/ledger/payments", requirePermission("payments.record"), (req, res) => {
     const b = req.body || {};
