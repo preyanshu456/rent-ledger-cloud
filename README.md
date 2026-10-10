@@ -8,7 +8,7 @@ Live: https://rent-ledger.up.railway.app
 
 **Owners and managers**
 - Properties, floors, rooms, tenants, and leases with automatic rent schedules, renewals and expiry tracking.
-- An append-only **ledger** for rent, electricity, gas, maintenance, late fees, damage and other charges. Payments by UPI, cash, bank transfer, cheque or Razorpay are applied to bills. Partial payments and tenant credit are handled. Corrections are recorded as adjustments, voids and reversals, so paid history is never edited.
+- An append-only **ledger** for rent, electricity, gas, maintenance, late fees, damage and other charges. Payments by UPI, cash, bank transfer or cheque are applied to bills (older Razorpay payments stay in the history). Partial payments and tenant credit are handled. Corrections are recorded as adjustments, voids and reversals, so paid history is never edited.
 - **Bank reconciliation:** import a statement CSV and get suggested tenant matches with the evidence behind each one. Nothing is recorded until you confirm.
 - **Finance dashboard and reports:** collection, outstanding, payments, property income, cash flow, lease expiry, expenses and deposits, as a printable page/PDF or CSV.
 - **Reminders** in English and Hindi, through in-app, email, SMS or WhatsApp. Messages are drafted, reviewed and approved before anything is sent. Duplicates are prevented and failed sends are retried.
@@ -20,7 +20,7 @@ Live: https://rent-ledger.up.railway.app
 
 **Tenants**
 - See balance, upcoming dues, lease, bills and receipts.
-- Pay online (Razorpay) or upload a payment proof.
+- Pay by UPI: the Pay button opens their own UPI app (Google Pay, PhonePe, Paytm, BHIM…) with the owner's UPI ID and the exact amount filled in, or shows a QR code on a computer. Or upload a payment proof. UPI payments stay pending until the owner records the money (no automatic verification yet).
 - Download statements and printable receipts.
 - Raise and track maintenance requests.
 - Read shared documents and message the owner.
@@ -84,7 +84,8 @@ All of this is enforced on the server. Every query is scoped to the signed-in us
 ## Known limits
 
 - Rate limits and background jobs run inside one server process, so run a single Railway instance (the default).
-- The Content-Security-Policy runs in report-only mode until it has been checked against Razorpay Checkout in production. After that, set `CSP_ENFORCE=true`.
+- The Content-Security-Policy runs in report-only mode by default. After checking the browser console shows no CSP reports, set `CSP_ENFORCE=true`.
+- UPI payments are not verified automatically: a started payment stays *pending* until the owner records the money they received.
 - Lease field extraction reads text-based PDFs and pasted text. Scanned images need the text pasted in.
 - The Hindi translation covers navigation, common labels, statuses, the tenant portal and reminder templates. Some longer explanations and server messages are still in English.
 - WhatsApp sending uses Twilio and needs an approved WhatsApp sender. SMS and WhatsApp to India may also need DLT/template registration with your provider.
