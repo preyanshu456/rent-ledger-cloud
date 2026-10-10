@@ -654,7 +654,7 @@ input:focus, select:focus, textarea:focus {
 .install-guide small { display: block; margin-top: 3px; color: rgb(var(--c101)); font-size: 11px; line-height: 1.45; }
 .install-guide button { justify-self: start; border: 1px solid rgba(var(--c102), .28); border-radius: 9px; padding: 8px 12px; color: rgb(var(--c103)); font: 600 12px/1 'IBM Plex Sans', sans-serif; background: rgba(var(--c104), .63); cursor: pointer; }
 
-/* ---------- Online payments (Razorpay) ---------- */
+/* ---------- Online payments (Pay buttons, paid-online notes) ---------- */
 /* #app is a flex row (sidebar + main) for owners; let the tenant page use the full width. */
 .tenant-shell { flex: 1; min-width: 0; width: 100%; }
 .tenant-hero { grid-template-columns: repeat(4, 1fr); }
@@ -1812,4 +1812,31 @@ mark.tpl-fill { background: rgba(var(--g-mid), .18); color: inherit; padding: 0 
 @media (max-width: 860px) {
   .instal-grid { grid-template-columns: 1fr; }
   .instal-figures strong { font-size: 17px; }
+}
+
+/* ---------- UPI payments (UPI Intent sheet) ---------- */
+.upi-dialog [hidden] { display: none !important; }
+/* Mostly opaque so amounts and the QR code stay easy to read over the page. */
+.confirm-dialog.upi-dialog { background: linear-gradient(160deg, rgba(255,255,255,.97), rgba(255,255,255,.93)) !important; }
+.upi-dialog { position: relative; width: min(440px, 100%); max-height: calc(100dvh - 40px); overflow-y: auto; gap: 12px; }
+.upi-dialog h2 { font-size: 30px; }
+.upi-close { position: absolute; top: 12px; right: 14px; width: 34px; height: 34px; border: 0; border-radius: 10px; background: rgba(var(--c7), .1); color: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
+.upi-to code, .upi-ref code, .upi-pending-card code { font-size: 13px; word-break: break-all; }
+.upi-bills { list-style: none; margin: 0; padding: 10px 12px; border-radius: 12px; background: rgba(var(--c7), .07); display: grid; gap: 4px; font-size: 14px; }
+.upi-bills li { display: flex; justify-content: space-between; gap: 12px; }
+.upi-step { display: grid; gap: 10px; }
+.upi-step h3 { margin: 4px 0 0; font-size: 17px; }
+.upi-open { display: flex; justify-content: center; min-height: 48px; text-decoration: none; font-size: 16px; }
+.upi-qr { display: grid; justify-items: center; gap: 8px; }
+.upi-qr-box { display: grid; justify-items: center; gap: 8px; text-align: center; }
+.upi-qr-box svg { width: min(240px, 70vw); height: auto; border-radius: 12px; border: 1px solid rgba(var(--c7), .18); }
+.upi-copy { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.upi-warning, .upi-missing { padding: 10px 12px; border-radius: 12px; background: rgba(233, 163, 70, .14); color: inherit !important; }
+.upi-ref { font-size: 13px !important; }
+.upi-pending-note { font-size: 13px !important; padding-top: 8px; border-top: 1px solid rgba(var(--c7), .14); }
+.upi-pending-card ul { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.upi-pending-card li { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 14px; }
+@media (max-width: 520px) {
+  .upi-dialog { max-height: calc(100dvh - 24px); }
+  .upi-dialog h2 { font-size: 26px; }
 }

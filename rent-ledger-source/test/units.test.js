@@ -112,10 +112,11 @@ test("log redaction hides secrets", () => {
 });
 
 test("config warnings catch half-configured providers without printing secrets", () => {
-  const warnings = configWarnings({ RAZORPAY_KEY_ID: "rzp_test_123", NODE_ENV: "production" });
-  assert.ok(warnings.some((w) => w.includes("Razorpay")));
+  const warnings = configWarnings({ RAZORPAY_KEY_ID: "rzp_test_123", RESEND_API_KEY: "re_secret_1", NODE_ENV: "production" });
+  assert.ok(warnings.some((w) => w.includes("RAZORPAY_KEY_ID") && w.includes("no longer used")));
+  assert.ok(warnings.some((w) => w.includes("Resend")));
   assert.ok(warnings.some((w) => w.includes("DATA_DIR")));
-  assert.ok(warnings.every((w) => !w.includes("rzp_test_123")));
+  assert.ok(warnings.every((w) => !w.includes("rzp_test_123") && !w.includes("re_secret_1")));
 });
 
 test("phone numbers and emails map to one login key", () => {

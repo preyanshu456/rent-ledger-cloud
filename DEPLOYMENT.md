@@ -58,13 +58,13 @@ Prefer rolling **forward** with a fix if you can. It keeps every record.
 
 | Feature | Settings | Then |
 |---|---|---|
-| Online payments | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` | See `rent-ledger-source/RAZORPAY_SETUP.md` |
+| UPI payments | None (no payment gateway) | Each owner adds their UPI ID in Settings → UPI payments. Remove any old `RAZORPAY_*` and `SECRETS_KEY` variables |
 | Email reminders and reset codes | `RESEND_API_KEY`, `OTP_FROM_EMAIL` (and optional `NOTIFY_FROM_EMAIL`) | Settings → Reminders → tick Email; tenants must agree |
 | SMS | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | Same as above. Indian SMS may need DLT templates |
 | WhatsApp | Twilio settings + `TWILIO_WHATSAPP_FROM` | Needs an approved WhatsApp sender/template with Twilio |
 | Real sending | `NOTIFY_MODE=live` (the default in production) | Use `simulate` while testing |
 | Rent Ledger AI | `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL` | Owner: Settings → Organisation → "Use the AI model" |
-| Enforced CSP | `CSP_ENFORCE=true` | After checking the browser console shows no CSP reports, including during a Razorpay payment |
+| Enforced CSP | `CSP_ENFORCE=true` | After checking the browser console shows no CSP reports, including on the tenant Pay screen |
 
 ## Scaling note
 

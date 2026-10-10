@@ -6,7 +6,8 @@ const ledger = require("../services/ledger");
 const { billsView } = require("../services/views");
 const { documentView } = require("../services/documents");
 const { notifyStaff } = require("../services/notify");
-const { razorpayConfigured } = require("./payments");
+const { tenantPendingUpi } = require("./payments");
+const upi = require("../services/upi");
 const { tenantOnly, escapeHtml, printablePage } = require("./common");
 
 function register(app, { db, todayFor }) {
@@ -37,7 +38,11 @@ function register(app, { db, todayFor }) {
       room: { label: t.room.label, floorNumber: t.room.floor_number, monthlyRent: toRupees(t.room.monthly_rent_paise), gasMeterId: t.room.gas_meter_id || "", gasAuthorityId: t.room.gas_authority_id || null },
       building: { name: t.building?.name || "", address: t.building?.address || "" },
       rent: byKind("rent"), electricity: byKind("electricity"), gas: byKind("gas"), other,
-      payments: { enabled: razorpayConfigured(db, req.orgId) },
+      // UPI Intent: the Pay buttons show once the owner has a UPI ID saved.
+      payments: (() => {
+        const payee = upi.payeeFor(db, t.building?.org_id || req.orgId);
+        return { enabled: Boolean(payee), method: "upi", payeeName: payee?.name || "", upiId: payee?.vpa || "", pending: tenantPendingUpi(db, req.orgId, t.tenant.id) };
+      })(),
       balance: { outstanding: toRupees(balance.outstandingPaise), overdue: toRupees(balance.overduePaise), credit: toRupees(balance.creditPaise) },
       upcoming,
       lease: lease ? { startDate: lease.start_date, endDate: lease.end_date, rent: toRupees(lease.rent_paise), dueDay: lease.due_day, frequency: lease.frequency } : null,

@@ -24,7 +24,6 @@ const { createAuth, orgTimeZone } = require("./routes/common");
 // Requests that work without signing in.
 const PUBLIC_API = new Set([
   "/api/auth/signup", "/api/auth/login", "/api/auth/logout", "/api/auth/request-password-reset", "/api/auth/reset-password",
-  "/api/payments/razorpay/webhook",
 ]);
 // The only API paths a tenant account may reach (everything else is staff-only).
 const TENANT_ALLOWED = [
@@ -45,9 +44,8 @@ function createServer({ dataDir = config.dataDir } = {}) {
   app.disable("x-powered-by");
 
   const todayFor = (req) => localDate(req?.orgId ? orgTimeZone(db, req.orgId) : config.timeZone);
-  const keepRawBody = (req, res, buf) => { req.rawBody = buf; };
-  const jsonSmall = express.json({ limit: "100kb", verify: keepRawBody });
-  const jsonLarge = express.json({ limit: "15mb", verify: keepRawBody });
+  const jsonSmall = express.json({ limit: "100kb" });
+  const jsonLarge = express.json({ limit: "15mb" });
   const limits = {
     loginPerIp: createRateLimiter({ windowMs: 15 * 60_000, max: 100 }),
     loginFailuresPerContact: createRateLimiter({ windowMs: 15 * 60_000, max: 10 }),
@@ -82,7 +80,7 @@ function createServer({ dataDir = config.dataDir } = {}) {
   app.use(express.static(path.join(__dirname, "public")));
 
   // Everything under /api needs a signed-in user, except the public paths.
-  const isPublic = (p) => PUBLIC_API.has(p) || /^\/api\/payments\/razorpay\/webhook\/[A-Za-z0-9-]{1,64}$/.test(p);
+  const isPublic = (p) => PUBLIC_API.has(p);
   app.use("/api", (req, res, next) => (isPublic(req.baseUrl + req.path) ? next() : auth(req, res, next)));
   // Defence in depth: tenant accounts can only reach their own portal routes.
   app.use("/api", (req, res, next) => {

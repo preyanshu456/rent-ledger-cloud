@@ -30,11 +30,12 @@ Nothing is sent to these services unless the matching settings are configured on
 
 | Service | When it is used | What it receives |
 |---|---|---|
-| **Razorpay** | A tenant pays online | Order amount and a description (property, room, bills), plus the tenant's name, mobile and email as checkout prefill. Card/UPI details go straight from the tenant's browser to Razorpay, never through this server. |
 | **Resend** (email) | Password-reset codes; reminders by email, only to tenants who agreed to email reminders and only in `NOTIFY_MODE=live` | Recipient email, subject, message text (tenant name, amount, due date, property). |
 | **Twilio** (SMS / WhatsApp) | Password-reset codes; reminders by SMS/WhatsApp, only to tenants who agreed to that channel and only in `NOTIFY_MODE=live` | Recipient mobile number and the message text. |
 | **AI provider** (Anthropic or an OpenAI-compatible API) | Only when `AI_PROVIDER`, `AI_API_KEY` and `AI_MODEL` are set **and** the owner switches AI on in Settings | The question typed, the last few chat messages, and the results of the assistant's tools: tenant names, property and room labels, dates, amounts, and maintenance/expense titles. **Never sent:** phone numbers, emails, ID-proof numbers, passwords, documents or bank account details. In basic mode nothing is sent anywhere. |
 | **Google Fonts** | Loading the web app | Normal font requests from the browser (IP address, user agent). |
+
+**UPI payments** use no outside service: the server builds a `upi://pay` link (owner's UPI ID and name, amount, a reference and a short note such as "Rent Oct 2026 Room 1A") and the tenant's own UPI app handles the payment. Rent Ledger never sees UPI PINs, bank details or the money. (Earlier versions used Razorpay; those payment records are kept, and the saved Razorpay keys were deleted.)
 
 The AI only reads data through the same rule-based tools the reports use. It can't change records: anything it prepares (reminders, a maintenance task, an expense) waits as a proposal until a person approves it, and the approval is written to the audit log.
 
