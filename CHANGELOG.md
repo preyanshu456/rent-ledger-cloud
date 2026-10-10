@@ -1,5 +1,11 @@
 # Changelog
 
+## UPI: person-to-person link format and diagnostics (October 2026)
+- **The UPI link no longer sends `tr` (transaction reference).** NPCI's linking spec makes `tr` mandatory for *merchant* transactions; on a payment to a personal UPI ID it made the request look like an unsigned merchant request. The link now carries only `pa`, `pn`, `am`, `cu` and `tn`. No `mc`, `tid`, `url`, `mode` or signature fields are sent (a landlord is not a merchant). The Rent Ledger reference (`RL…`) stays at the end of the note, so it still shows in both UPI histories.
+- UPI IDs are saved and sent in lower case. The name and note are plain ASCII, and the note is at most 50 characters, always ending with the reference.
+- **Diagnostic logs:** each UPI request logs its reference, the parameter names, amount, currency, a masked UPI ID (`pr***@okaxis`) and whether any merchant fields were present. Cancellations log one of a fixed set of reasons. No full UPI ID, tenant details, PINs or bank details are logged.
+- **"My UPI app showed an error":** after returning from the UPI app the tenant can report a decline. It is recorded once on the request (as "UPI app showed an error"), never retried automatically, and the tenant is told how to pay another way.
+
 ## UPI: choose the app (October 2026)
 - On Android the Pay sheet now shows **Google Pay, PhonePe, Paytm, BHIM** and **Other UPI app**. Each app button opens exactly that app with the same server-built payment details, so a phone that remembers one app (for example WhatsApp) for all UPI links no longer sends every tenant there. On iPhone the Google Pay, PhonePe and Paytm buttons use those apps' own links.
 - The sheet no longer opens a UPI app by itself; the tenant taps the app they want.
