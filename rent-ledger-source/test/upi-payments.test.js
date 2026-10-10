@@ -32,11 +32,20 @@ async function ownerWithBills(contact, mobile, months = [["9", "12000"], ["10", 
 }
 
 // ---------- the link itself ----------
-test("builds a valid UPI link with exact amount, INR, reference and note", () => {
-  const uri = upi.buildUri({ vpa: "asha.verma@okaxis", name: "Asha Verma", amountPaise: 1250050, reference: "RLABCDEFGH23", note: "Rent Oct 2026 Room 1A RLABCDEFGH23" });
-  assert.match(uri, /^upi:\/\/pay\?pa=asha\.verma@okaxis&/, "the @ is not escaped");
+test("builds a person-to-person UPI link: pa, pn, am, cu, tn only", () => {
+  const uri = upi.buildUri({ vpa: "asha.verma@okaxis", name: "Asha Verma", amountPaise: 1250050, note: "Rent Oct 2026 Room 1A RLABCDEFGH23" });
+  assert.equal(uri, "upi://pay?pa=asha.verma@okaxis&pn=Asha%20Verma&am=12500.50&cu=INR&tn=Rent%20Oct%202026%20Room%201A%20RLABCDEFGH23");
   const p = params(uri);
-  assert.deepEqual(p, { pa: "asha.verma@okaxis", pn: "Asha Verma", am: "12500.50", cu: "INR", tr: "RLABCDEFGH23", tn: "Rent Oct 2026 Room 1A RLABCDEFGH23" });
+  assert.deepEqual(p, { pa: "asha.verma@okaxis", pn: "Asha Verma", am: "12500.50", cu: "INR", tn: "Rent Oct 2026 Room 1A RLABCDEFGH23" });
+  // No merchant-only fields on a payment to a personal UPI ID.
+  for (const k of ["tr", "mc", "tid", "url", "mode", "orgid", "sign", "purpose"]) assert.ok(!(k in p), k);
+  // Upper-case UPI IDs are sent in lower case; names and notes are plain ASCII.
+  const p2 = params(upi.buildUri({ vpa: " Asha.Verma@OKAXIS ", name: "आशा", amountPaise: 100, note: "Rent & more #1 RLX" }));
+  assert.equal(p2.pa, "asha.verma@okaxis");
+  assert.equal(p2.pn, "Owner");
+  assert.equal(p2.tn, "Rent more 1 RLX");
+  assert.ok(!("tn" in params(upi.buildUri({ vpa: "a1@ybl", name: "A", amountPaise: 100, note: "" }))));
+  assert.ok(upi.buildUri({ vpa: "a1@ybl", name: "A", amountPaise: 100, note: "x".repeat(200) }).endsWith("tn=" + "x".repeat(upi.NOTE_MAX)));
   assert.equal(upi.formatAmount(100), "1.00");
   assert.equal(upi.formatAmount(1_00_000_00), "100000.00");
   assert.throws(() => upi.formatAmount(0));
@@ -112,8 +121,9 @@ test("Pay all: amount and recipient come from the server, not the browser", asyn
   assert.equal(p.pn, "Ravi Sharma");
   assert.equal(p.am, "24500.00");
   assert.equal(p.cu, "INR");
-  assert.equal(p.tr, first.reference);
+  assert.deepEqual(Object.keys(p), ["pa", "pn", "am", "cu", "tn"], "only person-to-person fields");
   assert.ok(p.tn.endsWith(first.reference) && p.tn.includes("Rent") && p.tn.includes("1A"), p.tn);
+  assert.ok(p.tn.length <= upi.NOTE_MAX, p.tn);
   assert.match(first.qrSvg, /^<svg /);
   assert.equal(first.items.length, 2);
 });
@@ -209,6 +219,33 @@ test("nothing pending means nothing to pay; paid bills drop out of the amount", 
   assert.equal(none.status, 400);
   const empty = await ctx.request("POST", "/api/tenant/payments/upi", { token: A.tenantToken, body: {} });
   assert.equal(empty.status, 400);
+});
+
+// ---------- diagnostics ----------
+test("diagnostic description of a link masks the UPI ID and flags merchant fields", () => {
+  const d = upi.describeUri("upi://pay?pa=priya.sharma@okaxis&pn=Priya%20Sharma&am=9576.00&cu=INR&tn=Rent%20Oct%202026%20RL1");
+  assert.deepEqual(d, { scheme: "upi", params: ["pa", "pn", "am", "cu", "tn"], payee: "pr***@okaxis", payeeHandle: "okaxis", amount: "9576.00", currency: "INR", nameLength: 12, noteLength: 17, merchantFields: [] });
+  assert.ok(!JSON.stringify(d).includes("priya.sharma"));
+  assert.deepEqual(upi.describeUri("upi://pay?pa=a1@ybl&tr=X&mc=0000").merchantFields, ["tr", "mc"]);
+  assert.equal(upi.describeUri("nonsense").payee, "invalid");
+});
+
+test("the long note always keeps the reference and stays short", async () => {
+  const w = await ownerWithBills("upi-c@example.com", "9000000103", [["10", "5000"]]);
+  await ctx.request("PUT", "/api/org", { token: w.owner, body: { settings: { payments: { upiId: "Owner.C@YBL", payeeName: "C Owner" } } } });
+  const org = await ctx.request("GET", "/api/org", { token: w.owner });
+  assert.equal(org.json.upi.upiId, "owner.c@ybl", "saved in lower case");
+  const res = await ctx.request("POST", "/api/tenant/payments/upi", { token: w.tenantToken, body: { all: true } });
+  const p = params(res.json.uri);
+  assert.equal(p.pa, "owner.c@ybl");
+  assert.ok(p.tn.endsWith(res.json.reference) && p.tn.length <= upi.NOTE_MAX, p.tn);
+  // "My UPI app showed an error" is stored as a known reason, never free text.
+  const c = await ctx.request("POST", `/api/tenant/payments/upi/${res.json.id}/cancel`, { token: w.tenantToken, body: { reason: "app_error" } });
+  assert.equal(c.json.status, "cancelled");
+  assert.equal(ctx.db.get("SELECT failure_reason FROM payment_orders WHERE id = ?", res.json.id).failure_reason, "UPI app showed an error");
+  const again = await ctx.request("POST", "/api/tenant/payments/upi", { token: w.tenantToken, body: { all: true } });
+  await ctx.request("POST", `/api/tenant/payments/upi/${again.json.id}/cancel`, { token: w.tenantToken, body: { reason: "<script>anything</script>" } });
+  assert.equal(ctx.db.get("SELECT failure_reason FROM payment_orders WHERE id = ?", again.json.id).failure_reason, "Cancelled by tenant");
 });
 
 // ---------- the database change ----------
