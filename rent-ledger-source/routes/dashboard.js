@@ -2,7 +2,7 @@
 const { toRupees } = require("../lib/money");
 const { currentPeriod } = require("../lib/dates");
 const ledger = require("../services/ledger");
-const { razorpayConfigured } = require("./payments");
+const { paymentsEnabled } = require("./payments");
 const { orgTimeZone } = require("./common");
 
 function register(app, { db, todayFor }) {
@@ -49,7 +49,7 @@ function register(app, { db, todayFor }) {
       outstandingGasEntries: of(all, "gas").filter((c) => c.outstanding_paise > 0).length,
       overdueTotal: toRupees(all.filter((c) => c.status === "overdue" || (c.status === "partial" && c.due_date && c.due_date < today)).reduce((s, c) => s + c.outstanding_paise, 0)),
       gasBillsToEnter,
-      onlinePaymentsEnabled: razorpayConfigured(db, req.orgId),
+      onlinePaymentsEnabled: paymentsEnabled(db, req.orgId),
     });
   });
 }
