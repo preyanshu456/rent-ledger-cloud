@@ -6,13 +6,13 @@ const log = require("./log");
 
 const CSP_DIRECTIVES = [
   "default-src 'self'",
-  "script-src 'self' https://checkout.razorpay.com",
+  "script-src 'self'",
   // The UI sets many inline style="" attributes, so inline styles stay allowed.
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https:",
-  "connect-src 'self' https://api.razorpay.com https://lumberjack.razorpay.com",
-  "frame-src https://api.razorpay.com https://checkout.razorpay.com",
+  "connect-src 'self'",
+  "frame-src 'none'",
   "worker-src 'self'",
   "manifest-src 'self'",
   "object-src 'none'",
