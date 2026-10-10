@@ -1138,6 +1138,7 @@
         ${field('UPI ID', `<input name="upiId" maxlength="300" placeholder="yourname@okaxis" spellcheck="false" autocapitalize="off" value="${h(p.upiId || '')}">`)}
         ${field('Name shown in UPI apps', `<input name="payeeName" maxlength="50" placeholder="${h(u?.payeeName || o.name || '')}" value="${h(p.payeeName || '')}">`)}
       </div><p class="profile-note">Use a UPI ID in your own name. Leave it empty to use the UPI ID written in “How to pay”, if any.</p>
+      <p class="profile-note">Some apps and banks (for example Google Pay and Paytm) refuse payments to a personal UPI ID when the tenant opens them from the Pay button, while the QR code or typing your UPI ID in the app still works. Rent Ledger then shows the tenant the QR code and your UPI ID. A business UPI ID from your bank or UPI app is usually accepted from the Pay button too.</p>
       <div class="form-actions"><button class="btn" type="submit">Save</button></div></form>`);
     return status + form;
   }
