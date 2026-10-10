@@ -706,38 +706,11 @@ function renderTenantPortal() {
   return `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user"><span>Welcome, <b>${esc(d.tenant.name)}</b></span>${window.RL_I18N ? RL_I18N.picker() : ''}${window.RL_EXT?.tenantBell ? RL_EXT.tenantBell() : ''}<button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main">${window.RL_EXT ? RL_EXT.tenantNav() : ''}<p class="kicker">YOUR HOME</p><h1>${esc(d.building.name)}</h1><p class="tenant-address">${esc(d.room.label)} · Floor ${d.room.floorNumber}</p><section class="tenant-hero"><div><span>Monthly rent</span><strong>${fmtMoney(d.room.monthlyRent)}</strong><small>Your fixed monthly rental</small></div><div><span>Rent outstanding</span><strong class="${rentDue ? 'is-due' : ''}">${fmtMoney(rentDue)}</strong><small>${rentDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Electricity outstanding</span><strong class="${elecDue ? 'is-due' : ''}">${fmtMoney(elecDue)}</strong><small>${elecDue ? 'Payment pending' : 'All caught up'}</small></div><div><span>Gas outstanding</span><strong class="${gasDue ? 'is-due' : ''}">${fmtMoney(gasDue)}</strong><small>${gasDue ? 'Payment pending' : 'All caught up'}</small></div></section>${payAll}${renderPendingUpi(d.payments)}${window.RL_EXT ? RL_EXT.tenantHomeExtras(d) : ''}<section class="tenant-bills">${table('Rent history', d.rent, 'rent')}${table('Electricity bills', d.electricity, 'electricity')}${table('Gas bills', gasEntries, 'gas')}</section><input type="file" data-receipt-file accept="image/jpeg,image/png,image/webp,application/pdf" hidden></main></div>`;
 }
 
-// ---------- UPI payments (UPI Intent, no gateway) ----------
-// The server works out the amount and the owner's UPI ID; the browser only
-// says which bills. On a phone the tenant taps their UPI app (Google Pay,
-// PhonePe, Paytm, BHIM) or "Other UPI app" (the plain upi:// link). On a computer a QR
-// code is shown to scan with any UPI app. Nothing here marks a bill as paid:
-// the payment stays pending until the owner confirms they received it.
+// ---------- UPI payments (QR, no gateway) ----------
+// Rent Ledger displays the owner’s UPI QR for the tenant to scan in their UPI
+// app. It does not launch payment intents or attempt to bypass bank/app risk
+// checks. The transfer stays pending until the owner confirms receipt.
 const isPhone = () => isMobileApp || (navigator.userAgentData ? navigator.userAgentData.mobile : /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
-
-// Android remembers one app (often WhatsApp) as the default for every upi://
-// link and then stops showing the chooser. So the tenant picks their app here:
-// an intent:// link naming the app's package opens exactly that app, with the
-// same server-built payment details (UPI ID, amount, reference). If the app
-// isn't installed, Android offers it in the Play Store. "Other UPI app" is the
-// plain upi:// link, which opens the phone's default UPI app or chooser.
-const UPI_APPS = [
-  { name: 'Google Pay', android: 'com.google.android.apps.nbu.paisa.user', ios: 'tez://upi/' },
-  { name: 'PhonePe', android: 'com.phonepe.app', ios: 'phonepe://' },
-  { name: 'Paytm', android: 'net.one97.paytm', ios: 'paytmmp://' },
-  { name: 'BHIM', android: 'in.org.npci.upiapp', ios: '' },
-];
-function upiAppLinks(uri) {
-  const ua = navigator.userAgent;
-  const ios = /iPhone|iPad|iPod/i.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua));
-  const android = !ios && /Android/i.test(ua);
-  // The installed app's web view can't open intent:// links: keep the plain link there.
-  if (isMobileApp || (!ios && !android) || !/^upi:\/\/pay\?/.test(uri)) return [];
-  const rest = uri.slice('upi://'.length); // "pay?pa=…&am=…"
-  return UPI_APPS.filter((a) => (android ? a.android : a.ios)).map((a) => ({
-    name: a.name,
-    href: android ? `intent://${rest}#Intent;scheme=upi;package=${a.android};end` : `${a.ios}${rest}`,
-  }));
-}
 
 // body is either { items: [{ kind, id }] } or { all: true }.
 async function startTenantPayment(body, button) {
@@ -757,7 +730,6 @@ async function startTenantPayment(body, button) {
 function showUpiSheet(pay) {
   return new Promise((resolve) => {
     const phone = isPhone();
-    const apps = phone ? upiAppLinks(pay.uri) : [];
     const previous = document.activeElement;
     const wrap = document.createElement('div');
     wrap.className = 'confirm-backdrop upi-backdrop';
@@ -771,18 +743,10 @@ function showUpiSheet(pay) {
       <ul class="upi-bills">${bills}</ul>
       ${pay.warning ? `<p class="upi-warning">${esc(pay.warning)}</p>` : ''}
       <div class="upi-step" data-upi-step="start">
-        ${phone && apps.length ? `<h3 class="upi-pick">Pay with</h3>
-          <div class="upi-apps">${apps.map((a) => `<a class="btn upi-app" href="${esc(a.href)}" data-upi="open" data-no-i18n>${esc(a.name)}</a>`).join('')}<a class="btn secondary upi-app" href="${esc(pay.uri)}" data-upi="open">Other UPI app</a></div>
-          <p class="profile-note">Tap the app you use, check the amount and enter your UPI PIN. “Other UPI app” opens your phone's usual UPI app (for example WhatsApp or your bank's app).</p>
-          <p class="profile-note">If your app says “bank limit” or “risk policy”, come back here and tap “My UPI app showed an error” to pay by QR code or UPI ID.</p>` : ''}
-        ${phone && !apps.length ? `<a class="btn upi-open" href="${esc(pay.uri)}" data-upi="open">Open UPI app</a>
-          <p class="profile-note">Choose Google Pay, PhonePe, Paytm, BHIM or your bank's app, check the amount and enter your UPI PIN.</p>` : ''}
-        <div class="upi-qr ${phone ? 'is-collapsed' : ''}" data-upi-qr>
-          ${phone ? '<button type="button" class="btn small secondary" data-upi="show-qr">Show QR code instead</button>' : ''}
-          <div class="upi-qr-box" ${phone ? 'hidden' : ''}>${pay.qrSvg}<p class="profile-note">${phone ? 'Scan this from another phone, or take a screenshot and open it in your UPI app.' : 'Scan with any UPI app on your phone (Google Pay, PhonePe, Paytm, BHIM…), check the amount and enter your UPI PIN.'}</p></div>
-        </div>
-        <div class="upi-copy"><button type="button" class="btn small secondary" data-upi="copy-id">Copy UPI ID</button><button type="button" class="btn small secondary" data-upi="copy-amount">Copy amount</button></div>
-        <p class="upi-missing" data-upi-missing hidden>No UPI app opened? Install a UPI app, or scan the QR code / pay the UPI ID above from any UPI app.</p>
+        <h3 class="upi-pick">Pay by scanning this QR code</h3>
+        <div class="upi-qr-box">${pay.qrSvg}<p class="profile-note">${phone ? 'On this phone, save the QR image and choose “Scan from gallery” in your UPI app, or show this QR on another screen.' : 'Scan with your UPI app, then check the recipient name and amount before authorising.'}</p></div>
+        <div class="upi-copy"><button type="button" class="btn small" data-upi="save-qr">Save QR image</button><button type="button" class="btn small secondary" data-upi="copy-id">Copy UPI ID</button><button type="button" class="btn small secondary" data-upi="copy-amount">Copy amount</button></div>
+        <p class="profile-note">Paytm’s warning recommends scanning a QR for this payment. If it appears, choose “Pay via Scanning QR”. Rent Ledger cannot override UPI app or bank risk checks.</p>
       </div>
       <div class="upi-step" data-upi-step="back" hidden>
         <h3>Did you finish the payment?</h3>
@@ -791,7 +755,7 @@ function showUpiSheet(pay) {
       </div>
       <div class="upi-step upi-declined" data-upi-step="declined" hidden>
         <h3>Pay by QR code or UPI ID instead</h3>
-        <p class="profile-note">Your UPI app reported a failure. Check your bank or UPI transaction history before trying again; the failure message alone does not confirm whether you were charged. Google Pay, Paytm and some banks refuse payments to a personal UPI ID when they are opened from another app or website (they say “bank limit” or “risk policy”), but accept the same payment when you scan a QR code or enter the UPI ID inside the app. Please don't keep retrying the button.</p>
+        <p class="profile-note">Your UPI app reported a failure. Check your bank or UPI transaction history before trying again; the failure message alone does not confirm whether you were charged. Paytm’s warning recommends scanning a QR or paying by mobile number. This screen provides the QR option; Rent Ledger cannot override Paytm’s or your bank’s risk checks. Verify the recipient and amount in your UPI app before authorising, and do not repeat a declined payment while its status is unclear.</p>
         <div class="upi-qr-box">${pay.qrSvg}</div>
         <div class="upi-copy"><button type="button" class="btn small" data-upi="save-qr">Save QR image</button><button type="button" class="btn small secondary" data-upi="copy-id">Copy UPI ID</button><button type="button" class="btn small secondary" data-upi="copy-amount">Copy amount</button></div>
         <p class="profile-note">On this phone: save the QR image, open your UPI app, tap Scan and pick the image from your gallery. Or pay the UPI ID shown above the exact amount shown above. Then come back and tap “I've paid”.</p>
@@ -807,11 +771,9 @@ function showUpiSheet(pay) {
     const $ = (sel) => wrap.querySelector(sel);
     let done = false;
     let leftPage = false;
-    let missingTimer = null;
     const finish = () => {
       if (done) return;
       done = true;
-      clearTimeout(missingTimer);
       document.removeEventListener('visibilitychange', onVisibility);
       document.removeEventListener('keydown', onKey, true);
       wrap.classList.add('is-leaving');
@@ -819,20 +781,9 @@ function showUpiSheet(pay) {
       if (previous && previous.isConnected) previous.focus({ preventScroll: true });
       resolve();
     };
-    const showQr = () => { const box = $('.upi-qr-box'); if (box) box.hidden = false; $('[data-upi="show-qr"]')?.remove(); };
-    // The UPI app opening hides this page. If it's still showing after a few
-    // seconds, there is probably no UPI app: offer the QR code and UPI ID.
-    const launch = () => {
-      leftPage = false;
-      clearTimeout(missingTimer);
-      missingTimer = setTimeout(() => {
-        if (!leftPage && document.visibilityState === 'visible') { $('[data-upi-missing]').hidden = false; showQr(); }
-      }, 2500);
-    };
     function onVisibility() {
-      if (document.visibilityState === 'hidden') { leftPage = true; clearTimeout(missingTimer); return; }
-      // Back from the UPI app: we don't know if they paid, so ask.
-      if (leftPage) { $('[data-upi-step="back"]').hidden = false; $('[data-upi-missing]').hidden = true; }
+      if (document.visibilityState === 'hidden') { leftPage = true; return; }
+      if (leftPage) $('[data-upi-step="back"]').hidden = false;
     }
     function onKey(event) { if (event.key === 'Escape') { event.preventDefault(); finish(); } }
     document.addEventListener('visibilitychange', onVisibility);
@@ -841,12 +792,10 @@ function showUpiSheet(pay) {
       if (event.target === wrap) return finish();
       const action = event.target.closest('[data-upi]')?.dataset.upi;
       if (!action) return;
-      if (action === 'open') return launch(); // the link itself opens the UPI app
-      if (action === 'close') return finish();
-      if (action === 'show-qr') return showQr();
+            if (action === 'close') return finish();
       if (action === 'copy-id') { await copyText(pay.payee.upiId); return toast('UPI ID copied'); }
       if (action === 'copy-amount') { await copyText(String(pay.amount)); return toast('Amount copied'); }
-      if (action === 'save-qr') return saveQrImage($('.upi-declined svg'), `rent-ledger-upi-${pay.reference}.png`);
+      if (action === 'save-qr') return saveQrImage($('.upi-qr-box svg'), `rent-ledger-upi-${pay.reference}.png`);
       const button = event.target.closest('button');
       if (action === 'reported') {
         await withBusy(button, async () => {
@@ -870,16 +819,15 @@ function showUpiSheet(pay) {
       }
       if (action === 'cancel') {
         await withBusy(button, async () => {
-          const reason = leftPage ? 'not_completed' : ($('[data-upi-missing]').hidden ? 'cancelled' : 'no_app');
+          const reason = leftPage ? 'not_completed' : 'cancelled';
           try { await api('POST', `/api/tenant/payments/upi/${pay.id}/cancel`, { reason }); } catch (error) { toast(error.message, true); return; }
           toast('Payment not made. You can try again any time.');
           finish();
         });
       }
     });
-    // Nothing opens by itself: the tenant chooses the app (opening the default
-    // straight away sent everyone to whichever app the phone remembered).
-    (phone ? $('.upi-app, .upi-open') : $('[data-upi="reported"]'))?.focus({ preventScroll: true });
+    // Nothing opens automatically; the tenant chooses when and where to scan.
+    (phone ? $('[data-upi="save-qr"]') : $('[data-upi="reported"]'))?.focus({ preventScroll: true });
   });
 }
 
