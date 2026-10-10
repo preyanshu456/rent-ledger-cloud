@@ -91,7 +91,7 @@ function createServer({ dataDir = config.dataDir } = {}) {
   app.use((req, res, next) => (req.method !== "GET" && LARGE_BODY_PATHS.some((r) => r.test(req.path)) ? jsonLarge(req, res, next) : next()));
 
   const deps = { db, docs, config, log, limits, ipOf, contactLimitKey, auth, todayFor, jsonLarge };
-  for (const name of ["auth", "properties", "tenants", "bills", "portal", "payments", "dashboard", "team", ...OPTIONAL_MODULES]) {
+  for (const name of ["auth", "properties", "tenants", "bills", "portal", "payments", "dashboard", "team", "platform-admin", ...OPTIONAL_MODULES]) {
     require(`./routes/${name}`).register(app, deps);
   }
 
