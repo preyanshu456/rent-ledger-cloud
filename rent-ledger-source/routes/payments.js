@@ -16,6 +16,13 @@ const { tenantOnly, ctxOf } = require("./common");
 
 const LABELS = { rent: "Rent", electricity: "Electricity", gas: "Gas", maintenance: "Maintenance", late_fee: "Late fee", damage: "Damage", other: "Other" };
 const MONTHS = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// Why a tenant closed a UPI request without paying.
+const CANCEL_REASONS = {
+  cancelled: "Cancelled by tenant",
+  not_completed: "Not completed in UPI app",
+  app_error: "UPI app showed an error",
+  no_app: "No UPI app opened",
+};
 // Most banks cap a person-to-person UPI payment at ₹1,00,000.
 const UPI_TYPICAL_LIMIT_PAISE = 100_000_00;
 // An identical, unreported request made within this window is reused instead
@@ -38,7 +45,8 @@ function noteFor(items, roomLabel, reference) {
   const when = periods.length === 1 ? ` ${periods[0]}` : "";
   const room = roomLabel ? ` Room ${roomLabel}` : "";
   // The reference goes last and is never cut off, so the owner can match it.
-  return `${upi.cleanText(`${what}${when}${room}`, 80 - reference.length - 1)} ${reference}`;
+  const head = upi.cleanText(`${what}${when}${room}`, upi.NOTE_MAX - reference.length - 1);
+  return head ? `${head} ${reference}` : reference;
 }
 
 function orderView(o, extra = {}) {
@@ -57,11 +65,15 @@ function linkFor(o) {
   const items = JSON.parse(o.items_json);
   const room = o.room_label || "";
   const note = noteFor(items, room, o.upi_reference);
-  const uri = upi.buildUri({ vpa: o.payee_vpa, name: o.payee_name, amountPaise: o.amount_paise, reference: o.upi_reference, note });
+  const uri = upi.buildUri({ vpa: o.payee_vpa, name: o.payee_name, amountPaise: o.amount_paise, note });
   return { uri, qrSvg: upi.qrSvg(uri), note };
 }
 
-function register(app, { db, todayFor }) {
+function register(app, { db, todayFor, log }) {
+  // Diagnostic log line for a UPI request: what went into the link, never the
+  // full UPI ID, tenant details, or anything about the tenant's bank account.
+  const logUpi = (message, o, extra = {}) => log?.info(message, { paymentRef: o.upi_reference, orderId: o.id, orgId: o.org_id, ...extra });
+
   // tenant → room → building → organisation (the owner who bills them).
   function tenancyOf(req) {
     const tenant = db.get("SELECT * FROM tenants WHERE id = ? AND org_id = ? AND active = 1", req.user.tenant_id, req.orgId);
@@ -124,6 +136,7 @@ function register(app, { db, todayFor }) {
       });
       const order = { ...result.order, room_label: t.room.label };
       const link = linkFor(order);
+      logUpi(result.reused ? "upi intent reused" : "upi intent created", order, { ...upi.describeUri(link.uri), amountPaise, billCount: items.length, payeeSource: payee.source });
       res.status(result.reused ? 200 : 201).json(orderView(order, {
         ...link, reused: result.reused,
         verified: false,
@@ -141,6 +154,7 @@ function register(app, { db, todayFor }) {
     if (!o.tenant_reported_at) {
       db.run("UPDATE payment_orders SET tenant_reported_at = ? WHERE id = ? AND tenant_reported_at IS NULL", db.nowIso(), o.id);
       const tenant = db.get("SELECT name FROM tenants WHERE id = ?", o.tenant_id);
+      logUpi("upi intent reported paid by tenant", o, { amountPaise: o.amount_paise });
       notifyStaff(db, o.org_id, {
         kind: "payment_review", title: "Tenant says they paid by UPI",
         body: `${tenant?.name || "A tenant"} says they paid ₹${toRupees(o.amount_paise).toLocaleString("en-IN")} to ${o.payee_vpa} (reference ${o.upi_reference}). Check your UPI or bank app, then record the payment. It is not marked as paid automatically.`,
@@ -158,7 +172,12 @@ function register(app, { db, todayFor }) {
     if (o.status === "cancelled") return res.json(orderView(o));
     if (o.status !== "pending") return res.status(409).json({ error: "This payment can't be cancelled." });
     if (o.tenant_reported_at) return res.status(409).json({ error: "You already told your owner this was paid. Ask them if anything is wrong." });
-    db.run("UPDATE payment_orders SET status = 'cancelled', failure_reason = ? WHERE id = ? AND status = 'pending'", String(req.body?.reason || "Cancelled by tenant").slice(0, 200), o.id);
+    // Only known reasons are stored and logged (no free text from the browser).
+    const reason = CANCEL_REASONS[req.body?.reason] ? req.body.reason : "cancelled";
+    db.run("UPDATE payment_orders SET status = 'cancelled', failure_reason = ? WHERE id = ? AND status = 'pending'", CANCEL_REASONS[reason], o.id);
+    // An app error is logged as a warning so it stands out. Nothing is retried:
+    // the tenant decides whether to try another app, the QR code, or pay directly.
+    (reason === "app_error" ? log?.warn?.bind(log) : log?.info?.bind(log))?.("upi intent cancelled", { paymentRef: o.upi_reference, orderId: o.id, orgId: o.org_id, reason, amountPaise: o.amount_paise, payee: upi.maskVpa(o.payee_vpa) });
     res.json(orderView(db.get("SELECT * FROM payment_orders WHERE id = ?", o.id)));
   });
 
