@@ -786,6 +786,12 @@ function showUpiSheet(pay) {
       <div class="upi-step" data-upi-step="back" hidden>
         <h3>Did you finish the payment?</h3>
         <p class="profile-note">We can't see your UPI app, so tell us. Your owner will check that the money arrived.</p>
+        <button type="button" class="btn small secondary" data-upi="app-error">My UPI app showed an error</button>
+      </div>
+      <div class="upi-step upi-declined" data-upi-step="declined" hidden>
+        <h3>The payment didn't go through</h3>
+        <p class="profile-note">Your UPI app or bank declined it, so no money should have left your account. Rent Ledger can't change that decision, and trying the same payment again and again can get it blocked for longer.</p>
+        <p class="profile-note">You can close this and tap Pay again with a different UPI app, scan the QR code from another phone, or pay your owner directly and add a payment proof.</p>
       </div>
       <p class="upi-ref">Reference <code data-no-i18n>${esc(pay.reference)}</code></p>
       <p class="upi-pending-note">Your bills stay <b>pending</b> until your owner confirms the money reached them. This can take a while.</p>
@@ -847,9 +853,20 @@ function showUpiSheet(pay) {
           } catch (error) { toast(error.message, true); }
         });
       }
+      if (action === 'app-error') {
+        // Record it once and explain; never retry automatically.
+        await withBusy(button, async () => {
+          try { await api('POST', `/api/tenant/payments/upi/${pay.id}/cancel`, { reason: 'app_error' }); } catch (error) { toast(error.message, true); return; }
+          wrap.querySelectorAll('[data-upi-step="start"], [data-upi-step="back"], .confirm-actions, .upi-pending-note').forEach((el) => { el.hidden = true; });
+          $('[data-upi-step="declined"]').hidden = false;
+          $('.upi-close')?.focus({ preventScroll: true });
+        });
+        return;
+      }
       if (action === 'cancel') {
         await withBusy(button, async () => {
-          try { await api('POST', `/api/tenant/payments/upi/${pay.id}/cancel`, { reason: leftPage ? 'Not completed in UPI app' : 'Cancelled by tenant' }); } catch (error) { toast(error.message, true); return; }
+          const reason = leftPage ? 'not_completed' : ($('[data-upi-missing]').hidden ? 'cancelled' : 'no_app');
+          try { await api('POST', `/api/tenant/payments/upi/${pay.id}/cancel`, { reason }); } catch (error) { toast(error.message, true); return; }
           toast('Payment not made. You can try again any time.');
           finish();
         });

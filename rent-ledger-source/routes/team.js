@@ -69,7 +69,7 @@ function register(app, { db, todayFor, log }) {
       if (p.upiId !== undefined) {
         const raw = String(p.upiId || "").trim();
         if (raw && !upi.normaliseVpa(raw)) return res.status(400).json({ error: "Enter a valid UPI ID, like yourname@okaxis or 9876543210@ybl." });
-        next.upiId = raw;
+        next.upiId = raw ? upi.normaliseVpa(raw) : "";
       }
       if (p.payeeName !== undefined) next.payeeName = upi.cleanText(v.text({ label: "Name shown in UPI apps", max: 50 })(p.payeeName), 50);
       settings.payments = next;
