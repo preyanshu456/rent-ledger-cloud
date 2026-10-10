@@ -1274,10 +1274,10 @@
     const other = (p.other || []).filter((o) => o.status !== 'void').slice(0, 10).map((o) => [h(o.description || label(o.kind)), h(o.dueDate || ''), money(o.amount), money(o.outstanding), stamp(o.status)]);
     const receipts = (d.tReceipts || []).slice(0, 10).map((r) => [h(r.receivedOn), money(r.amount), h(label(r.method)), r.reversed ? stamp('void') : stamp(r.verification), `<button class="btn small secondary" data-action="open-page" data-url="/api/ledger/payments/${r.id}/receipt">Receipt</button>`]);
     const lease = p.lease ? `<article class="card"><h3>Your lease</h3><p>${h(p.lease.startDate)} → ${h(p.lease.endDate || 'no end date')} · rent ${money(p.lease.rent)} (${h(label(p.lease.frequency))}), due on day ${p.lease.dueDay}</p></article>` : '';
-    return `<section class="tenant-balance"><div><span>Total outstanding</span><strong class="${b.outstanding ? 'is-due' : ''}">${money(b.outstanding)}</strong></div><div><span>Overdue</span><strong class="${b.overdue ? 'is-due' : ''}">${money(b.overdue)}</strong></div><div><span>Credit</span><strong>${money(b.credit)}</strong></div><div><button class="btn secondary" data-action="open-page" data-url="/api/tenant/statement?format=html">Download statement</button></div></section>
-      <section class="tenant-bills">${card('Upcoming dues', table(['Bill', 'Due', 'Amount', ''], upcoming, { emptyText: 'Nothing due right now.' }))}${lease}
+    return `
+      <details class="tenant-account-details"><summary>More account details</summary><section class="tenant-bills"><div class="card"><p>Available credit: <strong>${money(b.credit)}</strong></p><button class="btn secondary" data-action="open-page" data-url="/api/tenant/statement?format=html">Download statement</button></div>${card('Upcoming dues', table(['Bill', 'Due', 'Amount', ''], upcoming, { emptyText: 'Nothing due right now.' }))}${lease}
       ${other.length ? card('Other charges', table(['Charge', 'Due', 'Amount', 'Outstanding', 'Status'], other)) : ''}
-      ${card('Payments & receipts', table(['Date', 'Amount', 'Method', 'Status', ''], receipts, { emptyText: 'No payments recorded yet.' }))}</section>`;
+      ${card('Payments & receipts', table(['Date', 'Amount', 'Method', 'Status', ''], receipts, { emptyText: 'No payments recorded yet.' }))}</section></details>`;
   };
   const tenantShell = (title, sub, body) => `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user">${window.RL_I18N ? RL_I18N.picker() : ''}${X.tenantBell()}<button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main">${X.tenantNav()}<p class="kicker">${h(sub)}</p><h1>${h(title)}</h1>${body}</main></div>`;
 
