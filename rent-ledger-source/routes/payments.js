@@ -166,6 +166,21 @@ function register(app, { db, todayFor, log }) {
   });
 
   // The tenant didn't pay (closed the app, cancelled, no UPI app…).
+  // The tenant's UPI app refused the payment (e.g. Google Pay "bank limit",
+  // Paytm "risk policy"). Recorded once and logged; the request stays pending
+  // so the tenant can still pay the same amount by QR code or UPI ID and then
+  // tap "I've paid". Nothing is retried and nothing is marked paid.
+  app.post("/api/tenant/payments/upi/:id/declined", tenantOnly, (req, res) => {
+    const o = ownOrder(req);
+    if (!o) return res.status(404).json({ error: "Payment not found." });
+    if (o.status !== "pending") return res.status(409).json({ error: "This payment request is no longer open. Tap Pay to start a new one." });
+    if (o.failure_reason !== CANCEL_REASONS.app_error) {
+      db.run("UPDATE payment_orders SET failure_reason = ? WHERE id = ? AND status = 'pending'", CANCEL_REASONS.app_error, o.id);
+      log?.warn?.("upi intent declined by app", { paymentRef: o.upi_reference, orderId: o.id, orgId: o.org_id, amountPaise: o.amount_paise, payee: upi.maskVpa(o.payee_vpa) });
+    }
+    res.json(orderView(db.get("SELECT * FROM payment_orders WHERE id = ?", o.id), { verified: false }));
+  });
+
   app.post("/api/tenant/payments/upi/:id/cancel", tenantOnly, (req, res) => {
     const o = ownOrder(req);
     if (!o) return res.status(404).json({ error: "Payment not found." });

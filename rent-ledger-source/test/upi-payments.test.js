@@ -248,6 +248,40 @@ test("the long note always keeps the reference and stays short", async () => {
   assert.equal(ctx.db.get("SELECT failure_reason FROM payment_orders WHERE id = ?", again.json.id).failure_reason, "Cancelled by tenant");
 });
 
+// ---------- QR and Pay button are the same payment ----------
+test("₹1: the QR code and the Pay button carry exactly the same link; a decline keeps the request open", async () => {
+  const w = await ownerWithBills("upi-d@example.com", "9000000104", [["11", "1"]]);
+  await ctx.request("PUT", "/api/org", { token: w.owner, body: { settings: { payments: { upiId: "7900000000@pthdfc", payeeName: "D Owner" } } } });
+  const res = await ctx.request("POST", "/api/tenant/payments/upi", { token: w.tenantToken, body: { all: true } });
+  assert.equal(res.status, 201, res.text);
+  // The QR is generated from the very same string the buttons open.
+  assert.equal(res.json.qrSvg, upi.qrSvg(res.json.uri));
+  assert.equal(res.json.uri, `upi://pay?pa=7900000000@pthdfc&pn=D%20Owner&am=1.00&cu=INR&tn=${encodeURIComponent(res.json.note)}`);
+  assert.equal(res.json.amount, 1);
+
+  // "My UPI app showed an error": recorded once, request stays pending, nothing paid.
+  const d1 = await ctx.request("POST", `/api/tenant/payments/upi/${res.json.id}/declined`, { token: w.tenantToken });
+  assert.equal(d1.status, 200, d1.text);
+  assert.equal(d1.json.status, "pending");
+  assert.equal(d1.json.verified, false);
+  assert.equal(ctx.db.get("SELECT failure_reason FROM payment_orders WHERE id = ?", res.json.id).failure_reason, "UPI app showed an error");
+  assert.equal((await ctx.request("POST", `/api/tenant/payments/upi/${res.json.id}/declined`, { token: w.tenantToken })).status, 200, "repeat is harmless");
+  const portal = await ctx.request("GET", "/api/tenant/portal", { token: w.tenantToken });
+  assert.equal(portal.json.balance.outstanding, 1, "nothing is marked paid");
+  // Another tenant can't touch it.
+  assert.equal((await ctx.request("POST", `/api/tenant/payments/upi/${res.json.id}/declined`, { token: A.tenantToken })).status, 404);
+  // After paying by QR the tenant can still say "I've paid"; it stays pending/unverified.
+  const rep = await ctx.request("POST", `/api/tenant/payments/upi/${res.json.id}/reported`, { token: w.tenantToken });
+  assert.equal(rep.status, 200);
+  assert.equal(rep.json.status, "pending");
+  // A cancelled request can't be marked declined.
+  const again = await ctx.request("POST", "/api/tenant/payments/upi", { token: w.tenantToken, body: { all: true } });
+  assert.equal(again.status, 201, again.text);
+  assert.notEqual(again.json.id, res.json.id, "a reported request is never reused");
+  assert.equal((await ctx.request("POST", `/api/tenant/payments/upi/${again.json.id}/cancel`, { token: w.tenantToken })).status, 200);
+  assert.equal((await ctx.request("POST", `/api/tenant/payments/upi/${again.json.id}/declined`, { token: w.tenantToken })).status, 409);
+});
+
 // ---------- the database change ----------
 test("the migration keeps old Razorpay payment history and removes saved Razorpay keys", () => {
   const dir = path.join(__dirname, "..", "migrations");

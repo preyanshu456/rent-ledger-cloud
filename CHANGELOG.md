@@ -1,5 +1,10 @@
 # Changelog
 
+## UPI: QR code and UPI ID when the app refuses the Pay button (October 2026)
+- Investigated QR versus Pay button at code level: both are built from the **same** server link (`routes/payments.js` `linkFor`). For a ₹1 bill the QR payload, the Paytm/Google Pay/PhonePe/BHIM buttons and the saved QR image are byte-for-byte identical: `upi://pay?pa=…&pn=…&am=1.00&cu=INR&tn=…`. No merchant code, `tr` or other metadata. The only difference is how the payment is started (scan inside the app versus opened from the browser), which the payer's app and bank judge.
+- **"My UPI app showed an error" no longer cancels the request.** It records the decline once (`POST /api/tenant/payments/upi/:id/declined`, logged as a warning) and keeps the request pending, so the tenant can pay the same amount by QR code or UPI ID and then tap "I've paid". Nothing is retried and nothing is marked paid.
+- The decline screen shows the QR code with **Save QR image** (to scan from the gallery in the UPI app), Copy UPI ID and Copy amount. The phone sheet explains when to use it, and owner settings explain that some apps refuse the Pay button for personal UPI IDs.
+
 ## UPI: person-to-person link format and diagnostics (October 2026)
 - **The UPI link no longer sends `tr` (transaction reference).** NPCI's linking spec makes `tr` mandatory for *merchant* transactions; on a payment to a personal UPI ID it made the request look like an unsigned merchant request. The link now carries only `pa`, `pn`, `am`, `cu` and `tn`. No `mc`, `tid`, `url`, `mode` or signature fields are sent (a landlord is not a merchant). The Rent Ledger reference (`RL…`) stays at the end of the note, so it still shows in both UPI histories.
 - UPI IDs are saved and sent in lower case. The name and note are plain ASCII, and the note is at most 50 characters, always ending with the reference.
