@@ -1277,7 +1277,7 @@
     return `
       <details class="tenant-account-details"><summary>More account details</summary><section class="tenant-bills"><div class="card"><p>Available credit: <strong>${money(b.credit)}</strong></p><button class="btn secondary" data-action="open-page" data-url="/api/tenant/statement?format=html">Download statement</button></div>${card('Upcoming dues', table(['Bill', 'Due', 'Amount', ''], upcoming, { emptyText: 'Nothing due right now.' }))}${lease}
       ${other.length ? card('Other charges', table(['Charge', 'Due', 'Amount', 'Outstanding', 'Status'], other)) : ''}
-      ${card('Payments & receipts', table(['Date', 'Amount', 'Method', 'Status', ''], receipts, { emptyText: 'No payments recorded yet.' }))}</section></details>
+      ${card('Payments & receipts', table(['Date', 'Amount', 'Method', 'Status', ''], receipts, { emptyText: 'No payments recorded yet.' }))}</section></details>`;
   };
   const tenantShell = (title, sub, body) => `<div class="tenant-shell"><header class="tenant-top"><div class="brand">Rent Ledger <span class="brand-mark">TENANT</span></div><div class="tenant-user">${window.RL_I18N ? RL_I18N.picker() : ''}${X.tenantBell()}<button class="logout" data-logout>Sign out</button></div></header><main class="tenant-main">${X.tenantNav()}<p class="kicker">${h(sub)}</p><h1>${h(title)}</h1>${body}</main></div>`;
 
