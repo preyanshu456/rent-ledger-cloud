@@ -2,6 +2,7 @@
 const v = require("../lib/validate");
 const { config } = require("../lib/config");
 const accounts = require("../services/accounts");
+const upi = require("../services/upi");
 const { audit, listAudit } = require("../services/audit");
 const { inviteHash, newInviteCode } = require("./auth");
 const { ownerOnly, ctxOf, notFound, sendCsv } = require("./common");
@@ -13,9 +14,15 @@ const EXPORT_TABLES = [
 ];
 
 function register(app, { db, todayFor, log }) {
+  // upi = the UPI ID tenants' Pay buttons will actually use (see services/upi).
+  const orgView = (org) => {
+    const payee = upi.payeeFor(db, org.id);
+    return { id: org.id, name: org.name, timeZone: org.time_zone, defaultLanguage: org.default_language, settings: org.settings, upi: payee ? { upiId: payee.vpa, payeeName: payee.name, source: payee.source } : null };
+  };
+
   app.get("/api/org", (req, res) => {
     const org = accounts.getOrg(db, req.orgId);
-    res.json({ id: org.id, name: org.name, timeZone: org.time_zone, defaultLanguage: org.default_language, settings: org.settings });
+    res.json(orgView(org));
   });
 
   app.put("/api/org", ownerOnly, (req, res) => {
@@ -55,11 +62,23 @@ function register(app, { db, todayFor, log }) {
         rentMode: b.rentMode !== undefined ? (["simple", "instalments"].includes(b.rentMode) ? b.rentMode : settings.bills.rentMode) : settings.bills.rentMode,
       };
     }
+    // UPI ID tenants pay into (UPI Intent). Empty clears it.
+    if (body.settings?.payments) {
+      const p = body.settings.payments;
+      const next = { ...settings.payments };
+      if (p.upiId !== undefined) {
+        const raw = String(p.upiId || "").trim();
+        if (raw && !upi.normaliseVpa(raw)) return res.status(400).json({ error: "Enter a valid UPI ID, like yourname@okaxis or 9876543210@ybl." });
+        next.upiId = raw;
+      }
+      if (p.payeeName !== undefined) next.payeeName = upi.cleanText(v.text({ label: "Name shown in UPI apps", max: 50 })(p.payeeName), 50);
+      settings.payments = next;
+    }
     if (body.settings?.assistant) settings.assistant = { aiEnabled: body.settings.assistant.aiEnabled === true };
     db.run("UPDATE organizations SET name = ?, default_language = ?, time_zone = ?, settings_json = ? WHERE id = ?", name, language, timeZone, JSON.stringify(settings), req.orgId);
     audit(db, ctxOf(req), "org.updated", "organization", req.orgId, { fields: Object.keys(body) });
     const fresh = accounts.getOrg(db, req.orgId);
-    res.json({ id: fresh.id, name: fresh.name, timeZone: fresh.time_zone, defaultLanguage: fresh.default_language, settings: fresh.settings });
+    res.json(orgView(fresh));
   });
 
   // ---------- team ----------
