@@ -773,7 +773,8 @@ function showUpiSheet(pay) {
       <div class="upi-step" data-upi-step="start">
         ${phone && apps.length ? `<h3 class="upi-pick">Pay with</h3>
           <div class="upi-apps">${apps.map((a) => `<a class="btn upi-app" href="${esc(a.href)}" data-upi="open" data-no-i18n>${esc(a.name)}</a>`).join('')}<a class="btn secondary upi-app" href="${esc(pay.uri)}" data-upi="open">Other UPI app</a></div>
-          <p class="profile-note">Tap the app you use, check the amount and enter your UPI PIN. “Other UPI app” opens your phone's usual UPI app (for example WhatsApp or your bank's app).</p>` : ''}
+          <p class="profile-note">Tap the app you use, check the amount and enter your UPI PIN. “Other UPI app” opens your phone's usual UPI app (for example WhatsApp or your bank's app).</p>
+          <p class="profile-note">If your app says “bank limit” or “risk policy”, come back here and tap “My UPI app showed an error” to pay by QR code or UPI ID.</p>` : ''}
         ${phone && !apps.length ? `<a class="btn upi-open" href="${esc(pay.uri)}" data-upi="open">Open UPI app</a>
           <p class="profile-note">Choose Google Pay, PhonePe, Paytm, BHIM or your bank's app, check the amount and enter your UPI PIN.</p>` : ''}
         <div class="upi-qr ${phone ? 'is-collapsed' : ''}" data-upi-qr>
@@ -789,9 +790,11 @@ function showUpiSheet(pay) {
         <button type="button" class="btn small secondary" data-upi="app-error">My UPI app showed an error</button>
       </div>
       <div class="upi-step upi-declined" data-upi-step="declined" hidden>
-        <h3>The payment didn't go through</h3>
-        <p class="profile-note">Your UPI app or bank declined it, so no money should have left your account. Rent Ledger can't change that decision, and trying the same payment again and again can get it blocked for longer.</p>
-        <p class="profile-note">You can close this and tap Pay again with a different UPI app, scan the QR code from another phone, or pay your owner directly and add a payment proof.</p>
+        <h3>Pay by QR code or UPI ID instead</h3>
+        <p class="profile-note">Your UPI app refused this payment, so no money should have left your account. Google Pay, Paytm and some banks refuse payments to a personal UPI ID when they are opened from another app or website (they say “bank limit” or “risk policy”), but accept the same payment when you scan a QR code or enter the UPI ID inside the app. Please don't keep retrying the button.</p>
+        <div class="upi-qr-box">${pay.qrSvg}</div>
+        <div class="upi-copy"><button type="button" class="btn small" data-upi="save-qr">Save QR image</button><button type="button" class="btn small secondary" data-upi="copy-id">Copy UPI ID</button><button type="button" class="btn small secondary" data-upi="copy-amount">Copy amount</button></div>
+        <p class="profile-note">On this phone: save the QR image, open your UPI app, tap Scan and pick the image from your gallery. Or pay the UPI ID shown above the exact amount shown above. Then come back and tap “I've paid”.</p>
       </div>
       <p class="upi-ref">Reference <code data-no-i18n>${esc(pay.reference)}</code></p>
       <p class="upi-pending-note">Your bills stay <b>pending</b> until your owner confirms the money reached them. This can take a while.</p>
@@ -843,6 +846,7 @@ function showUpiSheet(pay) {
       if (action === 'show-qr') return showQr();
       if (action === 'copy-id') { await copyText(pay.payee.upiId); return toast('UPI ID copied'); }
       if (action === 'copy-amount') { await copyText(String(pay.amount)); return toast('Amount copied'); }
+      if (action === 'save-qr') return saveQrImage($('.upi-declined svg'), `rent-ledger-upi-${pay.reference}.png`);
       const button = event.target.closest('button');
       if (action === 'reported') {
         await withBusy(button, async () => {
@@ -855,11 +859,12 @@ function showUpiSheet(pay) {
       }
       if (action === 'app-error') {
         // Record it once and explain; never retry automatically.
+        // The request stays open so the same payment can be made by QR / UPI ID.
         await withBusy(button, async () => {
-          try { await api('POST', `/api/tenant/payments/upi/${pay.id}/cancel`, { reason: 'app_error' }); } catch (error) { toast(error.message, true); return; }
-          wrap.querySelectorAll('[data-upi-step="start"], [data-upi-step="back"], .confirm-actions, .upi-pending-note').forEach((el) => { el.hidden = true; });
+          try { await api('POST', `/api/tenant/payments/upi/${pay.id}/declined`, {}); } catch (error) { toast(error.message, true); return; }
+          wrap.querySelectorAll('[data-upi-step="start"], [data-upi-step="back"]').forEach((el) => { el.hidden = true; });
           $('[data-upi-step="declined"]').hidden = false;
-          $('.upi-close')?.focus({ preventScroll: true });
+          $('[data-upi="save-qr"]')?.focus({ preventScroll: true });
         });
         return;
       }
@@ -876,6 +881,33 @@ function showUpiSheet(pay) {
     // straight away sent everyone to whichever app the phone remembered).
     (phone ? $('.upi-app, .upi-open') : $('[data-upi="reported"]'))?.focus({ preventScroll: true });
   });
+}
+
+// Saves the QR code shown on screen as a PNG, so the tenant can open it with
+// their UPI app's "scan from gallery". It is the same payment link as the buttons.
+function saveQrImage(svg, filename) {
+  if (!svg) return;
+  const data = new XMLSerializer().serializeToString(svg);
+  const img = new Image();
+  img.onload = () => {
+    const size = 720;
+    const canvas = document.createElement('canvas');
+    canvas.width = size; canvas.height = size;
+    const g = canvas.getContext('2d');
+    g.fillStyle = '#fff'; g.fillRect(0, 0, size, size);
+    g.imageSmoothingEnabled = false;
+    g.drawImage(img, 0, 0, size, size);
+    canvas.toBlob((blob) => {
+      if (!blob) return toast('Could not save the QR image. Take a screenshot instead.', true);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast('QR image saved');
+    }, 'image/png');
+  };
+  img.onerror = () => toast('Could not save the QR image. Take a screenshot instead.', true);
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(data)}`;
 }
 
 // Tenant home: UPI payments started but not yet confirmed by the owner.
