@@ -791,7 +791,7 @@ function showUpiSheet(pay) {
       </div>
       <div class="upi-step upi-declined" data-upi-step="declined" hidden>
         <h3>Pay by QR code or UPI ID instead</h3>
-        <p class="profile-note">Your UPI app refused this payment, so no money should have left your account. Google Pay, Paytm and some banks refuse payments to a personal UPI ID when they are opened from another app or website (they say “bank limit” or “risk policy”), but accept the same payment when you scan a QR code or enter the UPI ID inside the app. Please don't keep retrying the button.</p>
+        <p class="profile-note">Your UPI app reported a failure. Check your bank or UPI transaction history before trying again; the failure message alone does not confirm whether you were charged. Google Pay, Paytm and some banks refuse payments to a personal UPI ID when they are opened from another app or website (they say “bank limit” or “risk policy”), but accept the same payment when you scan a QR code or enter the UPI ID inside the app. Please don't keep retrying the button.</p>
         <div class="upi-qr-box">${pay.qrSvg}</div>
         <div class="upi-copy"><button type="button" class="btn small" data-upi="save-qr">Save QR image</button><button type="button" class="btn small secondary" data-upi="copy-id">Copy UPI ID</button><button type="button" class="btn small secondary" data-upi="copy-amount">Copy amount</button></div>
         <p class="profile-note">On this phone: save the QR image, open your UPI app, tap Scan and pick the image from your gallery. Or pay the UPI ID shown above the exact amount shown above. Then come back and tap “I've paid”.</p>
