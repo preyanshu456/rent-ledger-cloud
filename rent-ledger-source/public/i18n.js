@@ -201,6 +201,9 @@
     'Connected': 'जुड़ा हुआ', 'Disconnect': 'हटाएँ', 'Copy': 'कॉपी करें', 'Live': 'लाइव', 'Test mode': 'टेस्ट मोड',
     // UPI payments (UPI Intent)
     'UPI payments': 'UPI भुगतान', 'PAY BY UPI': 'UPI से भुगतान', 'Open UPI app': 'UPI ऐप खोलें', 'Pay with': 'इससे भुगतान करें', 'Other UPI app': 'दूसरा UPI ऐप',
+    'My UPI app showed an error': 'मेरे UPI ऐप में गड़बड़ी दिखी', "The payment didn't go through": 'भुगतान नहीं हुआ',
+    "Your UPI app or bank declined it, so no money should have left your account. Rent Ledger can't change that decision, and trying the same payment again and again can get it blocked for longer.": 'आपके UPI ऐप या बैंक ने इसे मना कर दिया, इसलिए आपके खाते से पैसा नहीं कटना चाहिए। Rent Ledger यह फ़ैसला नहीं बदल सकता, और एक ही भुगतान बार-बार करने से वह और देर तक रुक सकता है।',
+    'You can close this and tap Pay again with a different UPI app, scan the QR code from another phone, or pay your owner directly and add a payment proof.': 'आप इसे बंद करके किसी दूसरे UPI ऐप से फिर से भुगतान दबा सकते हैं, दूसरे फ़ोन से QR कोड स्कैन कर सकते हैं, या सीधे अपने मालिक को भुगतान करके भुगतान का प्रमाण जोड़ सकते हैं।',
     "Tap the app you use, check the amount and enter your UPI PIN. “Other UPI app” opens your phone's usual UPI app (for example WhatsApp or your bank's app).": 'जिस ऐप से आप भुगतान करते हैं उसे दबाएँ, राशि जाँचें और अपना UPI PIN डालें। “दूसरा UPI ऐप” आपके फ़ोन का सामान्य UPI ऐप खोलता है (जैसे WhatsApp या आपके बैंक का ऐप)।',
     'Show QR code instead': 'इसके बजाय QR कोड दिखाएँ',
     'Copy UPI ID': 'UPI ID कॉपी करें', 'Copy amount': 'राशि कॉपी करें', "I've paid": 'मैंने भुगतान कर दिया', "I didn't pay": 'मैंने भुगतान नहीं किया',
