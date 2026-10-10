@@ -685,6 +685,14 @@ function renderTenantPortal() {
   const gasDue = gasEntries.reduce((s, x) => s + owed(x, 'gas'), 0);
   const totalDue = rentDue + elecDue + gasDue;
   const canPayOnline = Boolean(d.payments?.enabled);
+  const electricityBreakdown = (e) => {
+    const units = Number(e.unitsConsumed);
+    const rate = Number(e.ratePerUnit);
+    const previous = Number(e.prevReading);
+    const current = Number(e.currReading);
+    if (![units, rate, previous, current].every(Number.isFinite) || units <= 0 || rate <= 0) return '<p class="profile-note">Reading details were not saved for this bill. Please ask your owner for the calculation.</p>';
+    return `<details class="tenant-electricity-breakdown"><summary>How was this calculated?</summary><p>Previous reading: ${previous}</p><p>Current reading: ${current}</p><p>Usage: ${units} units × ${fmtMoney(rate)} per unit = ${fmtMoney(units * rate)}</p><p>Recorded bill amount: ${fmtMoney(e.amount)}</p></details>`;
+  };
   const billRows = (entries, type) => entries.slice(0,6).map(e => {
     const due = owed(e, type);
     const payButton = canPayOnline && due > 0
@@ -695,7 +703,7 @@ function renderTenantPortal() {
       : e.receipt
         ? `<button class="btn small secondary" data-tenant-action="view-receipt" data-receipt-id="${e.receipt.id}">View proof</button>`
         : `<button class="btn small secondary" data-tenant-action="upload-receipt" data-kind="${type}" data-entry-id="${e.id}">Add proof</button>`;
-    return `<tr><td>${MONTHS[e.month]} ${e.year}${type === 'gas' ? gasSubtitle(e) : ''}</td><td>${type === 'rent' ? fmtMoney(e.rentAmount) : fmtMoney(e.amount)}</td><td><span class="stamp ${e.status}">${e.status}</span></td><td><div class="bill-actions">${payButton}${proof}</div></td></tr>`;
+    return `<tr><td>${MONTHS[e.month]} ${e.year}${type === 'gas' ? gasSubtitle(e) : ''}</td><td>${type === 'rent' ? fmtMoney(e.rentAmount) : fmtMoney(e.amount)}</td><td><span class="stamp ${e.status}">${e.status}</span></td><td><div class="bill-actions">${payButton}${proof}</div></td></tr>${type === 'electricity' ? `<tr class="tenant-electricity-detail-row"><td colspan="4">${electricityBreakdown(e)}</td></tr>` : ''}`;
   }).join('') || `<tr><td colspan="4" class="text">No records yet</td></tr>`;
   const payAll = totalDue > 0
     ? (canPayOnline
