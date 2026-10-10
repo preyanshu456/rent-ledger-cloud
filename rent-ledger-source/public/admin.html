@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b5968">
+  <title>Quick Admin · Rent Ledger</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { min-height: 100vh; }
+    .quick-admin { max-width: 980px; margin: 0 auto; padding: 28px 20px 56px; }
+    .quick-head { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:28px; }
+    .quick-head .brand { font-size:22px; }
+    .quick-head .brand-mark { margin-left:8px; }
+    .quick-intro { margin:0 0 20px; }
+    .quick-intro h1 { margin:0 0 6px; }
+    .quick-intro p { margin:0; color:var(--ink-muted, #697586); }
+    .quick-section { margin:18px 0; }
+    .quick-section h2 { margin:0 0 5px; font-size:20px; }
+    .quick-section > p { margin:0 0 16px; color:var(--ink-muted, #697586); font-size:14px; }
+    .quick-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .quick-form label { display:grid; gap:6px; font-size:13px; font-weight:600; }
+    .quick-form label.wide { grid-column:1/-1; }
+    .quick-form input,.quick-form select { width:100%; min-width:0; padding:11px 12px; }
+    .quick-actions { grid-column:1/-1; display:flex; align-items:center; gap:12px; }
+    .quick-note { color:var(--ink-muted, #697586); font-size:12px; }
+    .quick-login { max-width:440px; margin:8vh auto; }
+    .quick-login form { display:grid; gap:14px; }
+    .quick-login label { display:grid; gap:6px; font-size:13px; font-weight:600; }
+    .quick-login input { padding:12px; }
+    .quick-message { min-height:20px; margin:10px 0 0; font-size:14px; }
+    .quick-message.error { color:#b42318; }
+    .quick-message.success { color:#16734a; }
+    .quick-estimate { grid-column:1/-1; padding:10px 12px; border-radius:10px; background:rgba(255,255,255,.5); font-size:14px; }
+    .quick-estimate strong { font-variant-numeric:tabular-nums; }
+    .quick-hidden { display:none!important; }
+    @media(max-width:620px) {
+      .quick-admin { padding:18px 14px 36px; }
+      .quick-form { grid-template-columns:1fr; }
+      .quick-form label.wide,.quick-actions,.quick-estimate { grid-column:1; }
+      .quick-head { margin-bottom:22px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="quick-admin">
+    <header class="quick-head">
+      <div class="brand">Rent Ledger <span class="brand-mark">QUICK ADMIN</span></div>
+      <div class="quick-note"><span id="account-label"></span> <button id="sign-out" class="logout quick-hidden" type="button">Sign out</button></div>
+    </header>
+    <section id="login-view" class="card quick-login">
+      <p class="kicker">QUICK ADMIN</p>
+      <h1>Sign in to add records</h1>
+      <p class="quick-note">Use your owner account or an invited manager account. Access stays limited to that account’s properties.</p>
+      <form id="login-form">
+        <label>Mobile number or email<input name="contact" autocomplete="username" required></label>
+        <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="btn" type="submit">Sign in</button>
+      </form>
+      <p id="login-message" class="quick-message" role="status"></p>
+    </section>
+    <section id="entry-view" class="quick-hidden">
+      <div class="quick-intro">
+        <p class="kicker">PROPERTY RECORDS</p>
+        <h1>Quick entry</h1>
+        <p>Add only tenants, rent history and electricity bills.</p>
+      </div>
+      <section class="card quick-section">
+        <h2>Add tenant</h2>
+        <p>Choose an available room and enter the tenant’s basic details.</p>
+        <form id="tenant-form" class="quick-form">
+          <label class="wide">Property / room<select name="roomId" required></select></label>
+          <label>Tenant name<input name="name" autocomplete="name" maxlength="120" required></label>
+          <label>Mobile number<input name="mobile" type="tel" autocomplete="tel" required></label>
+          <label>Email (optional)<input name="email" type="email" autocomplete="email"></label>
+          <label>Move-in date<input name="moveInDate" type="date"></label>
+          <label>Security deposit (₹)<input name="deposit" type="number" min="0" step="0.01"></label>
+          <div class="quick-actions"><button class="btn" type="submit">Add tenant</button><span class="quick-note">The existing owner records are not changed.</span></div>
+        </form>
+        <p class="quick-message" role="status"></p>
+      </section>
+      <section class="card quick-section">
+        <h2>Add rent history</h2>
+        <p>Record a month’s rent and, optionally, the amount already received.</p>
+        <form id="rent-form" class="quick-form">
+          <label class="wide">Tenant<select name="tenantId" required></select></label>
+          <label>Month<input name="month" type="month" required></label>
+          <label>Rent amount (₹)<input name="rentAmount" type="number" min="0.01" step="0.01" required></label>
+          <label>Amount received (₹)<input name="amountPaid" type="number" min="0" step="0.01" value="0"></label>
+          <label>Due date<input name="dueDate" type="date"></label>
+          <label>Received date<input name="paidDate" type="date"></label>
+          <div class="quick-actions"><button class="btn" type="submit">Save rent record</button></div>
+        </form>
+        <p class="quick-message" role="status"></p>
+      </section>
+      <section class="card quick-section">
+        <h2>Add electricity bill</h2>
+        <p>Enter meter readings and rate; the bill amount is calculated for you.</p>
+        <form id="electricity-form" class="quick-form">
+          <label class="wide">Tenant<select name="tenantId" required></select></label>
+          <label>Month<input name="month" type="month" required></label>
+          <label>Previous reading<input name="prevReading" type="number" min="0" step="0.01" required></label>
+          <label>Current reading<input name="currReading" type="number" min="0" step="0.01" required></label>
+          <label>Rate per unit (₹)<input name="ratePerUnit" type="number" min="0.01" step="0.01" required></label>
+          <label>Due date<input name="dueDate" type="date"></label>
+          <label>Paid date (optional)<input name="paidDate" type="date"></label>
+          <div id="electricity-estimate" class="quick-estimate">Estimated bill: <strong>₹0.00</strong></div>
+          <div class="quick-actions"><button class="btn" type="submit">Save electricity bill</button></div>
+        </form>
+        <p class="quick-message" role="status"></p>
+      </section>
+    </section>
+  </main>
+  <script>
+    const API = (path) => path;
+    const sessionKey = 'rentLedgerSession';
+    let session = null;
+    let buildings = [];
+    let rooms = [];
+    let tenants = [];
+    const $ = (selector, root = document) => root.querySelector(selector);
+    const money = (value) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR' }).format(Number(value) || 0);
+    const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+    const readSession = () => { try { return JSON.parse(localStorage.getItem(sessionKey) || 'null'); } catch { return null; } };
+    const showMessage = (element, message, error = false) => { element.textContent = message; element.className = `quick-message${message ? (error ? ' error' : ' success') : ''}`; };
+    async function api(method, path, body) {
+      const response = await fetch(API(path), {
+        method,
+        headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(session?.token ? { Authorization: `Bearer ${session.token}` } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Could not save this record.');
+      return result;
+    }
+    function monthParts(value) {
+      const [year, month] = String(value || '').split('-').map(Number);
+      if (!year || !month) throw new Error('Choose a valid month.');
+      return { year, month };
+    }
+    function selectedTenant(form) {
+      const tenant = tenants.find((row) => row.id === form.elements.tenantId.value);
+      if (!tenant) throw new Error('Choose an active tenant.');
+      return tenant;
+    }
+    function refreshChoices() {
+      const tenantRoomSelect = $('#tenant-form [name="roomId"]');
+      const available = rooms.filter((room) => !room.electricityOnly && !['occupied', 'archived', 'owner'].includes(room.status));
+      tenantRoomSelect.innerHTML = `<option value="">Choose a vacant room</option>${available.map((room) => {
+        const building = buildings.find((item) => item.id === room.buildingId);
+        return `<option value="${escapeHtml(room.id)}">${escapeHtml(building?.name || 'Property')} · ${escapeHtml(room.label)}</option>`;
+      }).join('')}`;
+      const active = tenants.filter((tenant) => tenant.active);
+      for (const select of document.querySelectorAll('[name="tenantId"]')) {
+        select.innerHTML = `<option value="">Choose a tenant</option>${active.map((tenant) => {
+          const room = rooms.find((item) => item.id === tenant.roomId);
+          const building = buildings.find((item) => item.id === room?.buildingId);
+          return `<option value="${escapeHtml(tenant.id)}">${escapeHtml(tenant.name)} · ${escapeHtml(building?.name || 'Property')} / ${escapeHtml(room?.label || tenant.roomId)}</option>`;
+        }).join('')}`;
+      }
+    }
+    async function loadData() {
+      const [auth, buildingData, roomData, tenantData] = await Promise.all([
+        api('GET', '/api/auth/me'), api('GET', '/api/buildings?status=active'), api('GET', '/api/rooms'), api('GET', '/api/tenants?active=1'),
+      ]);
+      const permissions = auth.permissions || [];
+      const allowed = auth.user?.role === 'owner' || (auth.user?.role === 'manager' && permissions.includes('tenants.manage') && permissions.includes('bills.manage'));
+      if (!allowed) throw new Error('This screen is for owners or managers with tenant and bill access.');
+      buildings = buildingData;
+      rooms = roomData;
+      tenants = tenantData;
+      $('#account-label').textContent = `${auth.user.name} · ${auth.org?.name || 'Your account'}`;
+      $('#sign-out').classList.remove('quick-hidden');
+      $('#entry-view').classList.remove('quick-hidden');
+      $('#login-view').classList.add('quick-hidden');
+      refreshChoices();
+    }
+    async function start() {
+      session = readSession();
+      if (!session?.token) return;
+      try { await loadData(); }
+      catch (error) {
+        session = null;
+        $('#login-view').classList.remove('quick-hidden');
+        showMessage($('#login-message'), error.message, true);
+      }
+    }
+    $('#login-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const button = form.querySelector('button[type="submit"]');
+      button.disabled = true;
+      showMessage($('#login-message'), 'Signing in…');
+      try {
+        const result = await api('POST', '/api/auth/login', Object.fromEntries(new FormData(form)));
+        session = result;
+        await loadData();
+        localStorage.setItem(sessionKey, JSON.stringify(result));
+      } catch (error) { session = null; showMessage($('#login-message'), error.message, true); }
+      finally { button.disabled = false; }
+    });
+    $('#tenant-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const output = form.parentElement.querySelector('.quick-message');
+      try {
+        const data = Object.fromEntries(new FormData(form));
+        const result = await api('POST', '/api/tenants', { ...data, deposit: data.deposit || undefined });
+        tenants.push(result);
+        refreshChoices();
+        form.reset();
+        showMessage(output, 'Tenant added.');
+      } catch (error) { showMessage(output, error.message, true); }
+    });
+    $('#rent-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const output = form.parentElement.querySelector('.quick-message');
+      try {
+        const data = Object.fromEntries(new FormData(form));
+        const tenant = selectedTenant(form);
+        const period = monthParts(data.month);
+        await api('POST', '/api/rent', { ...period, roomId: tenant.roomId, tenantId: tenant.id, rentAmount: data.rentAmount, amountPaid: data.amountPaid || 0, dueDate: data.dueDate || undefined, paidDate: data.paidDate || undefined });
+        form.reset();
+        form.elements.amountPaid.value = '0';
+        showMessage(output, 'Rent record saved.');
+      } catch (error) { showMessage(output, error.message, true); }
+    });
+    const electricityForm = $('#electricity-form');
+    const thisMonth = new Date().toISOString().slice(0, 7);
+    document.querySelectorAll('input[type="month"]').forEach((input) => { input.value = thisMonth; });
+    $('#rent-form').elements.rentAmount.addEventListener('focus', (event) => {
+      if (event.currentTarget.value) return;
+      const tenant = tenants.find((row) => row.id === $('#rent-form').elements.tenantId.value);
+      const room = rooms.find((row) => row.id === tenant?.roomId);
+      if (room?.monthlyRent) event.currentTarget.value = room.monthlyRent;
+    });
+    const updateEstimate = () => {
+      const previous = Number(electricityForm.elements.prevReading.value);
+      const current = Number(electricityForm.elements.currReading.value);
+      const rate = Number(electricityForm.elements.ratePerUnit.value);
+      const total = Math.max(current - previous, 0) * rate;
+      $('#electricity-estimate strong').textContent = money(total);
+    };
+    electricityForm.addEventListener('input', updateEstimate);
+    electricityForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const output = form.parentElement.querySelector('.quick-message');
+      try {
+        const data = Object.fromEntries(new FormData(form));
+        const tenant = selectedTenant(form);
+        const period = monthParts(data.month);
+        if (Number(data.currReading) < Number(data.prevReading)) throw new Error('Current reading cannot be lower than previous reading.');
+        await api('POST', '/api/electricity', { ...period, roomId: tenant.roomId, tenantId: tenant.id, prevReading: data.prevReading, currReading: data.currReading, ratePerUnit: data.ratePerUnit, dueDate: data.dueDate || undefined, paidDate: data.paidDate || undefined });
+        form.reset();
+        updateEstimate();
+        showMessage(output, 'Electricity bill saved.');
+      } catch (error) { showMessage(output, error.message, true); }
+    });
+    $('#sign-out').addEventListener('click', async () => {
+      if (!session) return;
+      try { await api('POST', '/api/auth/logout'); } catch {}
+      localStorage.removeItem(sessionKey);
+      location.reload();
+    });
+    start();
+  </script>
+</body>
+</html>
