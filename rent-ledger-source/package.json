@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "harfbuzzjs": "^1.6.3"
+    "harfbuzzjs": "^1.6.3",
+    "qrcode-generator": "^1.5.2"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.3",
