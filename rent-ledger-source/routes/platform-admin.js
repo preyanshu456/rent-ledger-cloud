@@ -1,6 +1,5 @@
 // Cross-organisation property-manager operations. This module is deliberately
-// separate from owner routes and is disabled unless the deployment allowlists
-// up to two existing account contacts.
+// separate from owner routes and limited to owner/manager accounts.
 const v = require("../lib/validate");
 const { toPaise } = require("../lib/money");
 const accounts = require("../services/accounts");
@@ -40,17 +39,14 @@ function platformContext(req, orgId = null) {
   return { orgId, userId: req.user.id, role: "platform_admin", requestId: req.id };
 }
 
-function register(app, { db, config }) {
-  const allowedContacts = new Set((config.platformAdminContacts || []).map(accounts.contactKey).filter(Boolean));
-  const onlyPlatformAdmin = (req, res, next) => {
-    if (!allowedContacts.size) return res.status(404).json({ error: "Not found" });
-    if (!allowedContacts.has(req.user?.contact_key) || !["owner", "manager"].includes(req.user?.role)) {
-      return res.status(403).json({ error: "Property manager access required." });
-    }
+function register(app, { db }) {
+  const ownerOrManager = (req, res, next) => {
+    if (!req.user) return res.status(401).json({ error: "Sign in required." });
+    if (!["owner", "manager"].includes(req.user.role)) return res.status(403).json({ error: "Owner or manager account required." });
     next();
   };
 
-  app.get("/api/platform-admin/organizations", onlyPlatformAdmin, (req, res) => {
+  app.get("/api/platform-admin/organizations", ownerOrManager, (req, res) => {
     audit(db, platformContext(req), "platform_admin.organizations_listed", "organization", null, {});
     const organizations = db.all(`
       SELECT o.id, o.name, o.created_at,
@@ -59,7 +55,7 @@ function register(app, { db, config }) {
     res.json(organizations);
   });
 
-  app.get("/api/platform-admin/organizations/:orgId", onlyPlatformAdmin, (req, res) => {
+  app.get("/api/platform-admin/organizations/:orgId", ownerOrManager, (req, res) => {
     const org = db.get("SELECT id, name FROM organizations WHERE id = ?", req.params.orgId);
     if (!org) return notFound(res, "Owner account");
     audit(db, platformContext(req, org.id), "platform_admin.organization_viewed", "organization", org.id, {});
@@ -81,7 +77,7 @@ function register(app, { db, config }) {
     res.json({ organization: org, buildings, rooms, tenants });
   });
 
-  app.post("/api/platform-admin/organizations/:orgId/tenants", onlyPlatformAdmin, (req, res) => {
+  app.post("/api/platform-admin/organizations/:orgId/tenants", ownerOrManager, (req, res) => {
     const orgId = req.params.orgId;
     if (!db.get("SELECT 1 FROM organizations WHERE id = ?", orgId)) return notFound(res, "Owner account");
     const roomId = req.body?.roomId;
@@ -109,7 +105,7 @@ function register(app, { db, config }) {
     res.status(201).json(tenantView(db, db.get("SELECT * FROM tenants WHERE id = ? AND org_id = ?", id, orgId)));
   });
 
-  app.post("/api/platform-admin/organizations/:orgId/tenants/:tenantId/move-out", onlyPlatformAdmin, (req, res) => {
+  app.post("/api/platform-admin/organizations/:orgId/tenants/:tenantId/move-out", ownerOrManager, (req, res) => {
     const orgId = req.params.orgId;
     const tenant = db.get("SELECT * FROM tenants WHERE id = ? AND org_id = ?", req.params.tenantId, orgId);
     if (!tenant) return notFound(res, "Tenant");
@@ -128,7 +124,7 @@ function register(app, { db, config }) {
     res.json({ ...tenantView(db, db.get("SELECT * FROM tenants WHERE id = ? AND org_id = ?", tenant.id, orgId)), removedLoginAccounts, identityCleared: true });
   });
 
-  app.post("/api/platform-admin/organizations/:orgId/electricity", onlyPlatformAdmin, (req, res) => {
+  app.post("/api/platform-admin/organizations/:orgId/electricity", ownerOrManager, (req, res) => {
     const orgId = req.params.orgId;
     if (!db.get("SELECT 1 FROM organizations WHERE id = ?", orgId)) return notFound(res, "Owner account");
     const roomId = req.body?.roomId;
@@ -152,7 +148,7 @@ function register(app, { db, config }) {
     res.status(201).json({ id: chargeId, roomId, tenantId: charge.tenant_id, unitsConsumed: units, amountPaise: charge.amount_paise, periodMonth: data.month, periodYear: data.year, dueDate: data.dueDate });
   });
 
-  app.get("/api/platform-admin/organizations/:orgId/electricity", onlyPlatformAdmin, (req, res) => {
+  app.get("/api/platform-admin/organizations/:orgId/electricity", ownerOrManager, (req, res) => {
     const orgId = req.params.orgId;
     if (!db.get("SELECT 1 FROM organizations WHERE id = ?", orgId)) return notFound(res, "Owner account");
     const roomId = req.query.roomId;
