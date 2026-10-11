@@ -82,7 +82,7 @@ function createServer({ dataDir = config.dataDir } = {}) {
   // Everything under /api needs a signed-in user, except the public paths.
   const isPublic = (p) => PUBLIC_API.has(p);
   app.use("/api", (req, res, next) => (isPublic(req.baseUrl + req.path) ? next() : auth(req, res, next)));
-  // Defence in depth: tenant accounts can only reach their own portal routes.
+  // Tenant accounts remain limited to their own portal routes.
   app.use("/api", (req, res, next) => {
     if (req.user?.role === "tenant" && !TENANT_ALLOWED.some((r) => r.test(req.baseUrl + req.path))) return res.status(403).json({ error: "Owner account required" });
     next();
