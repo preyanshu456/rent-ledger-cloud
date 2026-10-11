@@ -15,7 +15,7 @@
     <div id="notice" class="notice hidden" role="status" aria-live="polite"></div>
     <section id="loginCard" class="card hidden">
       <h2>Sign in</h2>
-      <p class="muted">Use the account that has been designated for property-manager access.</p>
+      <p class="muted">Sign in with an owner or manager account. Tenant accounts cannot use this console.</p>
       <form id="loginForm" class="grid">
         <div class="field"><label for="contact">Account contact</label><input id="contact" name="contact" autocomplete="username" required></div>
         <div class="field"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
@@ -163,7 +163,7 @@
           $("appArea").classList.add("hidden");
           if (/property manager access required/i.test(error.message) || /not found/i.test(error.message)) {
             if (!token) $("loginCard").classList.remove("hidden");
-            notice("This account is not enabled for property-manager access. Ask the site administrator to configure the designated account.", "error");
+            notice("Sign in with an owner or manager account. Tenant accounts cannot use this console.", "error");
           } else notice(error.message, "error");
         }
       }
