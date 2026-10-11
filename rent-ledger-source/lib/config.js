@@ -41,11 +41,6 @@ const config = {
   // Optional: when set, creating the first owner account requires this code.
   ownerSetupCode: process.env.OWNER_SETUP_CODE || "",
 
-  // Cross-organisation property-manager access is disabled unless up to two
-  // exact account contacts are configured on the server.
-  platformAdminContacts: (process.env.PLATFORM_ADMIN_CONTACTS || process.env.PLATFORM_ADMIN_CONTACT || "")
-    .split(",").map((contact) => contact.trim()).filter(Boolean).slice(0, 2),
-
   // Tenant invite codes, created by the owner, replace "anyone with the
   // tenant's mobile number can claim the login".
   inviteTtlDays: int("INVITE_TTL_DAYS", 7, { min: 1, max: 90 }),
@@ -80,7 +75,6 @@ function configWarnings(env = process.env) {
   if (leftovers.length) warnings.push(`${leftovers.join(", ")} ${leftovers.length > 1 ? "are" : "is"} no longer used (Razorpay was replaced by UPI payments). Remove ${leftovers.length > 1 ? "them" : "it"} from the server variables.`);
   if (env.NODE_ENV === "production" && !env.DATA_DIR) warnings.push("DATA_DIR is not set in production; data will be stored inside the container and lost on redeploy.");
   if (env.OWNER_SETUP_CODE && env.OWNER_SETUP_CODE.length < 8) warnings.push("OWNER_SETUP_CODE is shorter than 8 characters.");
-  if (String(env.PLATFORM_ADMIN_CONTACTS || "").split(",").filter((contact) => contact.trim()).length > 2) warnings.push("PLATFORM_ADMIN_CONTACTS accepts at most two accounts; extra contacts are ignored.");
   const aiProvider = String(env.AI_PROVIDER || (env.ANTHROPIC_API_KEY ? "anthropic" : "")).toLowerCase();
   if (aiProvider && !["anthropic", "openai"].includes(aiProvider)) warnings.push(`AI_PROVIDER "${aiProvider}" isn't supported (use anthropic or openai); the assistant stays in basic mode.`);
   if (aiProvider && !(env.AI_API_KEY || (aiProvider === "anthropic" && env.ANTHROPIC_API_KEY))) warnings.push("AI: AI_PROVIDER is set but there is no API key (AI_API_KEY); the assistant stays in basic mode.");
