@@ -134,14 +134,14 @@
 
   // ---------- sidebar navigation ----------
   // The everyday sections stay in view; everything else sits under "More".
-  const NAV_MAIN = [
+  const NAV_MAIN = X.NAV_MAIN = [
     ['dashboard', 'Dashboard', null],
     ['ledger', 'Bills & payments', 'reports.view'],
     ['reminders', 'Reminders', 'reminders.manage'],
     ['maintenance', 'Repairs', 'maintenance.manage'],
     ['settings', 'Settings', null],
   ];
-  const NAV_MORE = [
+  const NAV_MORE = X.NAV_MORE = [
     ['finance', 'Finance', 'reports.view'],
     ['leases', 'Leases', 'leases.manage'],
     ['expenses', 'Expenses', 'expenses.manage'],
@@ -174,7 +174,7 @@
 
   // ---------- phones: bottom tab bar + "More" panel ----------
   // Shown only on narrow screens (see style.css); the sidebar is used on computers.
-  const ICONS = {
+  const ICONS = X.ICONS = {
     home: '<path d="M4 11.2 12 4.8l8 6.4V19a1 1 0 0 1-1 1h-4.5v-5.2h-5V20H5a1 1 0 0 1-1-1z"/>',
     bills: '<path d="M7 3.8h10a1 1 0 0 1 1 1V20l-3-1.8-3 1.8-3-1.8L6 20V4.8a1 1 0 0 1 1-1z"/><path d="M9.2 8.6h5.6M9.2 12.4h5.6"/>',
     remind: '<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="m4 7 8 6 8-6"/>',
@@ -194,11 +194,12 @@
     bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15zM10 20a2 2 0 0 0 4 0"/>',
   };
   const icon = (name) => `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name] || ''}</svg>`;
-  const MOBILE_TABS = [['dashboard', 'Home', 'home', null], ['ledger', 'Bills', 'bills', 'reports.view'], ['reminders', 'Reminders', 'remind', 'reminders.manage'], ['maintenance', 'Repairs', 'repairs', 'maintenance.manage']];
+  const MOBILE_TABS = X.MOBILE_TABS = [['dashboard', 'Home', 'home', null], ['ledger', 'Bills', 'bills', 'reports.view'], ['reminders', 'Reminders', 'remind', 'reminders.manage'], ['maintenance', 'Repairs', 'repairs', 'maintenance.manage']];
   X.mobileNav = () => {
     const tabs = MOBILE_TABS.filter(navAllowed);
     const inTabs = tabs.some(([v]) => v === state.view);
-    const sections = [...NAV_MORE, ['settings', 'Settings', null]].filter(navAllowed);
+    // Sidebar sections that aren't in the bottom bar (e.g. Hostel) go in the More panel.
+    const sections = [...NAV_MAIN.filter(([v]) => v !== 'settings' && !MOBILE_TABS.some(([t]) => t === v)), ...NAV_MORE, ['settings', 'Settings', null]].filter(navAllowed);
     const buildings = (cache.buildings || []).map((b) => {
       const rooms = (cache.rooms || []).filter((r) => r.buildingId === b.id);
       const occ = rooms.filter((r) => r.status === 'occupied').length;
@@ -223,7 +224,7 @@
   X.actions['mnav-close'] = () => { setSheet(false); return false; };
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setSheet(false); });
   // Tenants: Home, Repairs, Messages, Documents, Profile at the bottom; notifications are the bell at the top.
-  const TENANT_TABS = [['home', 'Home', 'home'], ['maintenance', 'Repairs', 'repairs'], ['messages', 'Messages', 'messages'], ['documents', 'Documents', 'documents'], ['profile', 'Profile', 'profile']];
+  const TENANT_TABS = X.TENANT_TABS = [['home', 'Home', 'home'], ['maintenance', 'Repairs', 'repairs'], ['messages', 'Messages', 'messages'], ['documents', 'Documents', 'documents'], ['profile', 'Profile', 'profile']];
   X.tenantMobileNav = () => `<nav class="mnav tenant-mnav" aria-label="Sections">${TENANT_TABS.map(([k, text, ic]) => `<button type="button" class="mnav-btn ${state.tenantView === k ? 'active' : ''}" data-tenant-nav="${k}">${icon(ic)}<span>${h(text)}</span></button>`).join('')}</nav>`;
   X.tenantBell = () => `<button type="button" class="side-bell tenant-bell ${state.tenantView === 'notifications' ? 'active' : ''}" data-tenant-nav="notifications" aria-label="Notifications${X.tenantUnread ? `, ${X.tenantUnread} unread` : ''}">${icon('bell')}${X.tenantUnread ? `<span class="nav-count">${X.tenantUnread}</span>` : ''}</button>`;
 
@@ -834,7 +835,7 @@
   X.submits['expense-void'] = async (data, form) => { await api('POST', `/api/expenses/${form.dataset.id}/void`, data); toast('Expense voided'); };
 
   // ---------- reports ----------
-  const REPORTS = {
+  const REPORTS = X.REPORTS = {
     'rent-collection': ['Rent collection', 'Rent billed and collected per room and month.'],
     outstanding: ['Outstanding dues', 'Every unpaid bill today, oldest first.'],
     payments: ['Payments received', 'All money received in the period, by method.'],

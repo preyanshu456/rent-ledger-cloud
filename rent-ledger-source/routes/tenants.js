@@ -9,6 +9,7 @@ const { tenantView } = require("../services/views");
 const { notify } = require("../services/notify");
 const { inviteHash, newInviteCode } = require("./auth");
 const { refreshRoomStatus } = require("./properties");
+const { freeBeds } = require("../services/occupancy");
 const { requirePermission, ownerOnly, ctxOf, notFound } = require("./common");
 
 const TENANT_SCHEMA = {
@@ -52,6 +53,7 @@ function register(app, { db, todayFor }) {
     const where = ["org_id = :orgId"];
     const params = { orgId: req.orgId };
     if (req.query.roomId) { where.push("room_id = :roomId"); params.roomId = req.query.roomId; }
+    if (req.query.bedId) { where.push("bed_id = :bedId"); params.bedId = req.query.bedId; }
     if (req.query.active === "1" || req.query.active === "0") { where.push("active = :active"); params.active = Number(req.query.active); }
     if (req.query.q) { where.push("(name LIKE :q OR mobile LIKE :q)"); params.q = `%${String(req.query.q).slice(0, 60)}%`; }
     res.json(db.all(`SELECT * FROM tenants WHERE ${where.join(" AND ")} ORDER BY created_at`, params).map((t) => tenantView(db, t)));
@@ -70,19 +72,32 @@ function register(app, { db, todayFor }) {
     if (!room) return notFound(res, "Room");
     if (room.electricity_only) return res.status(400).json({ error: "Owner electricity-only floors cannot have tenants." });
     if (room.status === "archived") return res.status(400).json({ error: "This room is archived." });
-    if (db.get("SELECT 1 FROM tenants WHERE room_id = ? AND active = 1", roomId)) return res.status(409).json({ error: "This room already has an active tenant. Mark them as moved out first." });
+    // Which bed: the one asked for, or the first free bed in the room.
+    let bed;
+    if (req.body?.bedId) {
+      bed = db.get("SELECT * FROM beds WHERE id = ? AND room_id = ?", req.body.bedId, roomId);
+      if (!bed) return res.status(400).json({ error: "That bed is not in this room." });
+      if (bed.disabled) return res.status(409).json({ error: "That bed is marked as not for rent." });
+      if (db.get("SELECT 1 FROM tenants WHERE bed_id = ? AND active = 1", bed.id)) return res.status(409).json({ error: "Someone already lives in that bed. Choose another bed." });
+    } else {
+      bed = freeBeds(db, roomId)[0];
+      if (!bed) {
+        const beds = db.get("SELECT COUNT(*) AS n FROM beds WHERE room_id = ?", roomId).n;
+        return res.status(409).json({ error: beds > 1 ? "Every bed in this room is taken. Add a bed or move someone out first." : "This room already has an active tenant. Mark them as moved out first." });
+      }
+    }
     const data = v.clean(req.body, TENANT_SCHEMA);
     if (mobileInUse(db, req.orgId, data.mobile)) return res.status(409).json({ error: "Another active tenant already uses this mobile number." });
     const id = db.id();
     db.tx(() => {
-      db.run(`INSERT INTO tenants (id, org_id, room_id, name, mobile, alt_mobile, email, id_proof_type, id_proof_number, move_in_date, active, deposit_paise, notes, notify_email, notify_sms, notify_whatsapp, created_at)
-              VALUES (?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?)`,
-        id, req.orgId, roomId, data.name, data.mobile, data.altMobile, data.email, data.idProofType, data.idProofNumber, data.moveInDate,
+      db.run(`INSERT INTO tenants (id, org_id, room_id, bed_id, name, mobile, alt_mobile, email, id_proof_type, id_proof_number, move_in_date, active, deposit_paise, notes, notify_email, notify_sms, notify_whatsapp, created_at)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,?,?,?)`,
+        id, req.orgId, roomId, bed.id, data.name, data.mobile, data.altMobile, data.email, data.idProofType, data.idProofNumber, data.moveInDate,
         // Deposit agreed for this tenancy, taken from the room at move-in (or given explicitly).
         req.body?.deposit !== undefined && req.body.deposit !== "" ? toPaise(v.money("Deposit")(req.body.deposit)) : room.deposit_paise,
         data.notes, data.notifyEmail ? 1 : 0, data.notifySms ? 1 : 0, data.notifyWhatsapp ? 1 : 0, db.nowIso());
       refreshRoomStatus(db, roomId);
-      audit(db, ctxOf(req), "tenant.created", "tenant", id, { roomId });
+      audit(db, ctxOf(req), "tenant.created", "tenant", id, { roomId, bedId: bed.id });
     });
     res.status(201).json(tenantView(db, db.get("SELECT * FROM tenants WHERE id = ?", id)));
   });
@@ -132,7 +147,7 @@ function register(app, { db, todayFor }) {
     const moveOutDate = v.date({ label: "Move-out date" })(req.body?.moveOutDate) || todayFor(req);
     let removedLoginAccounts = 0;
     db.tx(() => {
-      db.run("UPDATE tenants SET active = 0, move_out_date = ?, updated_at = ? WHERE id = ?", moveOutDate, db.nowIso(), t.id);
+      db.run("UPDATE tenants SET active = 0, move_out_date = ?, leaving_on = '', updated_at = ? WHERE id = ?", moveOutDate, db.nowIso(), t.id);
       db.run("UPDATE leases SET status = 'ended', ended_at = ?, end_reason = 'Tenant moved out' WHERE tenant_id = ? AND status = 'active'", db.nowIso(), t.id);
       removedLoginAccounts = removeTenantLogins(db, [t.id]);
       clearIdentity(db, t.id);

@@ -17,7 +17,7 @@ function roomView(r) {
     id: r.id, buildingId: r.building_id, floorNumber: r.floor_number, label: r.label, electricityOnly: Boolean(r.electricity_only),
     monthlyRent: toRupees(r.monthly_rent_paise), deposit: toRupees(r.deposit_paise), status: r.status, notes: r.notes || "",
     createdAt: r.created_at, gasMeterId: r.gas_meter_id || "", gasAuthorityId: r.gas_authority_id || null,
-    paymentFrequency: r.payment_frequency, utilityNotes: r.utility_notes || "",
+    paymentFrequency: r.payment_frequency, utilityNotes: r.utility_notes || "", tags: json(r.tags_json, []),
   };
 }
 
@@ -30,6 +30,8 @@ function tenantView(db, t, now = Date.now()) {
     deposit: t.deposit_paise === null || t.deposit_paise === undefined ? null : toRupees(t.deposit_paise),
     notifyEmail: Boolean(t.notify_email), notifySms: Boolean(t.notify_sms), notifyWhatsapp: Boolean(t.notify_whatsapp),
     anonymized: Boolean(t.anonymized_at),
+    bedId: t.bed_id || null, bedLabel: t.bed_id ? db.get("SELECT label FROM beds WHERE id = ?", t.bed_id)?.label || "" : "",
+    noticeGivenOn: t.notice_given_on || "", leavingOn: t.leaving_on || "",
     login: { hasAccount: Boolean(db.get("SELECT 1 FROM users WHERE tenant_id = ?", t.id)), inviteExpiresAt: inviteActive ? t.invite_expires_at : null },
   };
 }

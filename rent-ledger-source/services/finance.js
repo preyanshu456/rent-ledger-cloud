@@ -144,10 +144,11 @@ function report(db, orgId, type, query, today) {
       const rows = paymentsInRange(db, orgId, { ...range, buildingId }).map((p) => { const r = roomInfo(p.room_id); return [p.received_on, r.name, r.label, tenantName(p.tenant_id), p.method, p.reference, p.verification, rupees(p.amount_paise)]; });
       return { title: "Payments received", columns: ["Date", "Property", "Room", "Tenant", "Method", "Reference", "Verification", "Amount"], rows, moneyColumns: [7] };
     }
-    default: return null;
+    default: return require("./reports-extra").report(db, orgId, type, query, today, range);
   }
 }
 
-const REPORT_TYPES = ["rent-collection", "outstanding", "payments", "property-income", "cash-flow", "lease-expiry", "maintenance-expenses", "deposit-settlements"];
+const REPORT_TYPES = ["rent-collection", "outstanding", "payments", "property-income", "cash-flow", "lease-expiry", "maintenance-expenses", "deposit-settlements",
+  "occupancy", "rent-roll", "defaulters", "late-fees-discounts", "package-charges", "leads", "bookings", "hostel-attendance", "meal-counts"];
 
 module.exports = { summary, report, REPORT_TYPES, normaliseRange, addMonths, monthsBetween };

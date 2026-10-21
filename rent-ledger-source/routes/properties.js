@@ -4,6 +4,7 @@ const { toPaise } = require("../lib/money");
 const { audit } = require("../services/audit");
 const { buildingView, roomView, authorityView } = require("../services/views");
 const { requirePermission, ownerOnly, ctxOf, notFound } = require("./common");
+const occ = require("../services/occupancy");
 
 const PROPERTY_TYPES = ["residential", "apartment", "independent_house", "pg_hostel", "commercial", "shop", "office", "mixed", "other"];
 const BUILDING_SCHEMA = {
@@ -32,6 +33,13 @@ const ROOM_SCHEMA = {
   deposit: v.money("Security deposit"),
   notes: v.text({ label: "Notes", max: 1000 }),
   electricityOnly: v.bool(),
+  tags: (value) => {
+    if (value === undefined || value === null || value === "") return [];
+    const list = Array.isArray(value) ? value : String(value).split(",");
+    const out = [...new Set(list.map((a) => String(a).trim()).filter(Boolean))].slice(0, 20);
+    if (out.some((a) => a.length > 40)) throw new v.ValidationError("Each tag must be 40 characters or fewer.");
+    return out;
+  },
   utilityNotes: v.text({ label: "Utility details", max: 500 }),
   paymentFrequency: (value) => {
     if (value === undefined || value === null || value === "") return "monthly";
@@ -169,12 +177,22 @@ function register(app, { db, docs, todayFor }) {
   });
 
   // ---------- rooms ----------
+  // Rooms with their beds (status, rent, who lives there).
+  const withBeds = (req, rows) => {
+    const beds = occ.bedsByRoom(db, req.orgId, rows.map((r) => r.id));
+    return rows.map((r) => {
+      const list = beds.get(r.id) || [];
+      const live = list.filter((b) => !b.disabled);
+      return { ...roomView(r), beds: list, bedCount: live.length, freeBeds: live.filter((b) => b.status === "vacant" || b.status === "booked").length, sharing: occ.sharingLabel(live.length || 1) };
+    });
+  };
+  const oneRoom = (req, id) => withBeds(req, [db.get("SELECT * FROM rooms WHERE id = ?", id)])[0];
   app.get("/api/rooms", (req, res) => {
     const where = ["org_id = :orgId"];
     const params = { orgId: req.orgId };
     if (req.query.buildingId) { where.push("building_id = :buildingId"); params.buildingId = req.query.buildingId; }
     if (req.query.status) { where.push("status = :status"); params.status = String(req.query.status); }
-    res.json(db.all(`SELECT * FROM rooms WHERE ${where.join(" AND ")} ORDER BY floor_number, label`, params).map(roomView));
+    res.json(withBeds(req, db.all(`SELECT * FROM rooms WHERE ${where.join(" AND ")} ORDER BY floor_number, label`, params)));
   });
 
   app.post("/api/rooms", manage, (req, res) => {
@@ -182,13 +200,18 @@ function register(app, { db, docs, todayFor }) {
     if (!buildingId) return res.status(400).json({ error: "buildingId and label are required" });
     if (!db.get("SELECT 1 FROM buildings WHERE id = ? AND org_id = ?", buildingId, req.orgId)) return notFound(res, "Building");
     const data = v.clean(req.body, ROOM_SCHEMA);
+    const bedCount = v.number({ label: "Number of beds", min: 1, max: 30, integer: true, fallback: 1 })(req.body?.beds);
     const id = db.id();
-    db.run(`INSERT INTO rooms (id, org_id, building_id, floor_number, label, electricity_only, monthly_rent_paise, deposit_paise, status, payment_frequency, utility_notes, notes, created_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      id, req.orgId, buildingId, data.floorNumber, data.label, data.electricityOnly ? 1 : 0, data.electricityOnly ? 0 : toPaise(data.monthlyRent), data.electricityOnly ? 0 : toPaise(data.deposit),
-      data.electricityOnly ? "owner" : "vacant", data.paymentFrequency, data.utilityNotes, data.notes, db.nowIso());
-    audit(db, ctxOf(req), "room.created", "room", id, { label: data.label, buildingId });
-    res.status(201).json(roomView(db.get("SELECT * FROM rooms WHERE id = ?", id)));
+    db.tx(() => {
+      db.run(`INSERT INTO rooms (id, org_id, building_id, floor_number, label, electricity_only, monthly_rent_paise, deposit_paise, status, payment_frequency, utility_notes, notes, tags_json, created_at)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        id, req.orgId, buildingId, data.floorNumber, data.label, data.electricityOnly ? 1 : 0, data.electricityOnly ? 0 : toPaise(data.monthlyRent), data.electricityOnly ? 0 : toPaise(data.deposit),
+        data.electricityOnly ? "owner" : "vacant", data.paymentFrequency, data.utilityNotes, data.notes, JSON.stringify(data.tags), db.nowIso());
+      // The first bed is added automatically; add the rest for shared rooms.
+      if (!data.electricityOnly) for (let i = 1; i < bedCount; i++) db.run("INSERT INTO beds (id, org_id, room_id, label, created_at) VALUES (?,?,?,?,?)", db.id(), req.orgId, id, occ.nextBedLabel(db, id), db.nowIso());
+      audit(db, ctxOf(req), "room.created", "room", id, { label: data.label, buildingId, beds: data.electricityOnly ? 0 : bedCount });
+    });
+    res.status(201).json(oneRoom(req, id));
   });
 
   app.put("/api/rooms/:id", manage, (req, res) => {
@@ -205,12 +228,14 @@ function register(app, { db, docs, todayFor }) {
     if (data.monthlyRent !== undefined) { sets.push("monthly_rent_paise = ?"); params.push(toPaise(data.monthlyRent)); }
     if (data.deposit !== undefined) { sets.push("deposit_paise = ?"); params.push(toPaise(data.deposit)); }
     if (data.electricityOnly !== undefined) { sets.push("electricity_only = ?"); params.push(data.electricityOnly ? 1 : 0); }
+    if (req.body?.tags !== undefined) { sets.push("tags_json = ?"); params.push(JSON.stringify(data.tags)); }
     db.tx(() => {
       if (sets.length) db.run(`UPDATE rooms SET ${sets.join(", ")}, updated_at = ? WHERE id = ?`, ...params, db.nowIso(), room.id);
       if (data.electricityOnly) db.run("UPDATE rooms SET monthly_rent_paise = 0, deposit_paise = 0 WHERE id = ?", room.id);
+      occ.ensureBed(db, db.get("SELECT * FROM rooms WHERE id = ?", room.id));
       refreshRoomStatus(db, room.id);
     });
-    res.json(roomView(db.get("SELECT * FROM rooms WHERE id = ?", room.id)));
+    res.json(oneRoom(req, room.id));
   });
 
   app.delete("/api/rooms/:id", ownerOnly, (req, res) => {

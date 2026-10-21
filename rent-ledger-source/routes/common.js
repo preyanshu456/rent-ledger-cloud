@@ -9,7 +9,7 @@ const { config } = require("../lib/config");
 // log, delete properties or manage the team.
 const MANAGER_PERMISSIONS = new Set([
   "properties.manage", "tenants.manage", "leases.manage", "bills.manage", "payments.record", "reconciliation.manage",
-  "maintenance.manage", "expenses.manage", "reports.view", "reminders.manage", "assistant.use", "documents.manage",
+  "maintenance.manage", "expenses.manage", "reports.view", "reminders.manage", "assistant.use", "documents.manage", "hostel.manage",
 ]);
 function can(user, permission) {
   if (!user) return false;

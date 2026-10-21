@@ -9,6 +9,7 @@ const { tenantView, electricityView, chargeExtras } = require("../services/views
 const { audit } = require("../services/audit");
 const { removeTenantLogins, clearIdentity } = require("./tenants");
 const { refreshRoomStatus } = require("./properties");
+const { freeBeds } = require("../services/occupancy");
 const { notFound, orgTimeZone } = require("./common");
 const { localDate } = require("../lib/dates");
 
@@ -90,7 +91,7 @@ function register(app, { db, config }) {
     if (!room) return notFound(res, "Room");
     if (room.electricity_only) return res.status(400).json({ error: "Owner electricity-only floors cannot have tenants." });
     if (room.status === "archived") return res.status(400).json({ error: "This room is archived." });
-    if (db.get("SELECT 1 FROM tenants WHERE room_id = ? AND active = 1", roomId)) return res.status(409).json({ error: "This room already has an active tenant." });
+    if (!freeBeds(db, roomId).length) return res.status(409).json({ error: "This room already has an active tenant." });
     const data = v.clean(req.body, TENANT_SCHEMA);
     if (db.all("SELECT id, mobile FROM tenants WHERE org_id = ? AND active = 1", orgId).some((t) => accounts.sameMobile(t.mobile, data.mobile))) {
       return res.status(409).json({ error: "Another active tenant already uses this mobile number." });
@@ -118,7 +119,7 @@ function register(app, { db, config }) {
     const ctx = platformContext(req, orgId);
     let removedLoginAccounts = 0;
     db.tx(() => {
-      db.run("UPDATE tenants SET active = 0, move_out_date = ?, updated_at = ? WHERE id = ? AND org_id = ?", moveOutDate, db.nowIso(), tenant.id, orgId);
+      db.run("UPDATE tenants SET active = 0, move_out_date = ?, leaving_on = '', updated_at = ? WHERE id = ? AND org_id = ?", moveOutDate, db.nowIso(), tenant.id, orgId);
       db.run("UPDATE leases SET status = 'ended', ended_at = ?, end_reason = 'Tenant moved out' WHERE tenant_id = ? AND status = 'active'", db.nowIso(), tenant.id);
       removedLoginAccounts = removeTenantLogins(db, [tenant.id]);
       clearIdentity(db, tenant.id);

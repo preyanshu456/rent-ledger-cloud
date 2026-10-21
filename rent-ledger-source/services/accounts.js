@@ -81,6 +81,10 @@ const DEFAULT_SETTINGS = {
   payments: { upiId: "", payeeName: "" },
   // The AI model is off until the owner turns it on (and a key is configured).
   assistant: { aiEnabled: false },
+  // Late fees on overdue bills. Off until the owner turns them on.
+  //   flat  = one fee of `amount` once the grace days have passed
+  //   daily = `amount` for every day late after the grace days, up to `maxAmount` (0 = no limit)
+  lateFees: { enabled: false, graceDays: 5, mode: "flat", amount: 100, maxAmount: 0, kinds: ["rent"] },
 };
 
 function mergeSettings(stored) {
@@ -92,6 +96,7 @@ function mergeSettings(stored) {
     bills: { ...DEFAULT_SETTINGS.bills, ...(s.bills || {}) },
     payments: { ...DEFAULT_SETTINGS.payments, ...(s.payments || {}) },
     assistant: { ...DEFAULT_SETTINGS.assistant, ...(s.assistant || {}) },
+    lateFees: { ...DEFAULT_SETTINGS.lateFees, ...(s.lateFees || {}) },
   };
 }
 

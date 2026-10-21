@@ -2,8 +2,8 @@
 // instantly even on a slow connection. Each time, a fresh copy is fetched in
 // the background and used from the next open. Money and records (/api/) are
 // never cached here.
-const CACHE_NAME = 'rent-ledger-shell-v12';
-const APP_SHELL = ['/', '/index.html', '/style.css', '/app.js', '/i18n.js', '/modules.js', '/manifest.webmanifest', '/assets/rent-ledger-icon.svg', '/sw-register.js'];
+const CACHE_NAME = 'rent-ledger-shell-v13';
+const APP_SHELL = ['/', '/index.html', '/style.css', '/app.js', '/i18n.js', '/modules.js', '/rentok.js', '/manifest.webmanifest', '/assets/rent-ledger-icon.svg', '/sw-register.js'];
 const FONT_HOSTS = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 
 self.addEventListener('install', (event) => {
@@ -20,6 +20,8 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
   const sameOrigin = url.origin === self.location.origin;
   if (sameOrigin && url.pathname.startsWith('/api/')) return;
+  // Public property pages (/p/...) are their own pages, not the app.
+  if (sameOrigin && url.pathname.startsWith('/p/')) return;
   if (sameOrigin && ['/admin.html', '/platform-admin.html'].includes(url.pathname)) return;
   if (sameOrigin && url.pathname === '/platform-admin.html') return;
   if (!sameOrigin && !FONT_HOSTS.includes(url.hostname)) return;

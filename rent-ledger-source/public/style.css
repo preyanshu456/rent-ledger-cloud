@@ -1844,3 +1844,134 @@ mark.tpl-fill { background: rgba(var(--g-mid), .18); color: inherit; padding: 0 
   .upi-dialog { max-height: calc(100dvh - 24px); }
   .upi-dialog h2 { font-size: 26px; }
 }
+
+/* ===================== Beds, occupancy, leads, dues, property page, hostel ===================== */
+:root { --bed-occupied: #338b79; --bed-notice: #c99236; --bed-booked: #4e6fd1; --bed-vacant: rgba(var(--c1), .28); }
+.stamp.partial, .stamp.bed-notice, .stamp.notice { color: var(--partial-amber); }
+.stamp.bed-occupied { color: var(--paid-green); }
+.stamp.bed-booked { color: var(--bed-booked); }
+.stamp.bed-vacant { color: rgba(var(--c1), .55); }
+.stamp.bed-disabled { color: rgba(var(--c1), .45); text-decoration: line-through; }
+.stamp.lead-new, .stamp.lead-contacted { color: rgba(var(--c1), .7); }
+.stamp.lead-visit_scheduled, .stamp.lead-visited { color: var(--bed-booked); }
+.stamp.lead-token_paid, .stamp.booking-confirmed, .stamp.booking-pending { color: var(--partial-amber); }
+.stamp.lead-won, .stamp.booking-moved_in { color: var(--paid-green); }
+.stamp.lead-lost, .stamp.booking-cancelled { color: rgba(var(--c1), .45); text-decoration: line-through; }
+.room-card .rc-beds { font-size: 12px; margin-top: 4px; color: rgba(var(--c1), .7); }
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.chip-btn { border: 1px solid var(--rule); background: rgba(255,255,255,.6); border-radius: 99px; padding: 5px 12px; font: inherit; font-size: 13px; color: inherit; cursor: pointer; min-height: 32px; }
+.chip-btn.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.chip-btn b { margin-left: 2px; }
+.link-btn.strong { font-weight: 700; text-decoration: underline; }
+.filter-line { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin: 0 0 14px; }
+.filter-line select, .filter-line .inline-form { margin: 0; }
+.check-row { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; }
+.notice-strip { padding: 10px 14px; border-radius: 12px; background: rgba(201,146,54,.14); border: 1px solid rgba(201,146,54,.35); margin-bottom: 14px; font-size: 14px; }
+.bed-strip { padding-top: 12px; padding-bottom: 12px; }
+.bed-strip-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; }
+.beds-card h3 small, .occ-building h3 small, .card h3 small { font-weight: 400; opacity: .7; font-size: 13px; margin-left: 6px; }
+tr.sub-row td { background: rgba(255,255,255,.35); }
+.inline-form.wrap { flex-wrap: wrap; }
+.wa-btn { background: #1f9d55 !important; }
+.input-prefix { display: flex; align-items: center; gap: 4px; }
+.input-prefix span { font-family: var(--font-mono); opacity: .7; }
+.input-prefix input { flex: 1; min-width: 0; }
+
+/* occupancy */
+.bed-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 4px 0 14px; font-size: 13px; }
+.bed-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.bed-dot { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 2px solid transparent; }
+.bed-dot.bed-occupied { background: var(--bed-occupied); }
+.bed-dot.bed-notice { background: var(--bed-notice); }
+.bed-dot.bed-booked { background: var(--bed-booked); }
+.bed-dot.bed-vacant { background: transparent; border-color: var(--bed-vacant); }
+.bed-dot.bed-disabled { background: repeating-linear-gradient(45deg, rgba(var(--c1), .18) 0 3px, transparent 3px 6px); border-color: rgba(var(--c1), .18); }
+.occ-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.occ-floor { display: grid; grid-template-columns: 74px 1fr; gap: 10px; padding: 10px 0; border-top: 1px solid var(--rule); }
+.occ-floor:first-of-type { border-top: 0; }
+.occ-floor-label { font: 600 11px var(--font-mono); text-transform: uppercase; opacity: .7; padding-top: 10px; }
+.occ-rooms { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
+.occ-room { border: 1px solid var(--rule); border-left: 4px solid var(--bed-vacant); border-radius: 12px; padding: 9px 11px; background: rgba(255,255,255,.55); cursor: pointer; transition: transform .15s ease, box-shadow .15s ease; }
+.occ-room:hover, .occ-room:focus-visible { transform: translateY(-2px); box-shadow: 0 8px 18px var(--shadow); }
+.occ-room.occ-full { border-left-color: var(--bed-occupied); }
+.occ-room.occ-partial { border-left-color: var(--bed-notice); }
+.occ-room-top { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
+.occ-room-top small, .occ-room-foot { font-size: 11.5px; opacity: .75; }
+.occ-beds { display: flex; flex-wrap: wrap; gap: 4px; margin: 7px 0 5px; }
+.occ-beds .bed-dot { width: 18px; height: 18px; }
+
+/* leads */
+.lead-detail .timeline { margin-top: 12px; }
+
+/* property page settings */
+.site-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+.site-photos figure { margin: 0; display: grid; gap: 6px; }
+.site-photos img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; }
+.file-btn { cursor: pointer; }
+.site-live { border-left: 4px solid var(--paid-green) !important; }
+
+/* hostel window */
+body.hostel-mode .sidebar, body.hostel-mode .mnav { display: none !important; }
+body.hostel-mode .main { max-width: none; padding: 20px 28px 40px; margin: 0 auto; width: 100%; }
+.hostel-shell { max-width: 1280px; margin: 0 auto; }
+.hostel-top { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.hostel-title { display: flex; gap: 10px; align-items: center; }
+.hostel-title b { font-family: var(--font-display); font-size: 28px; display: block; line-height: 1.1; }
+.hostel-title small { opacity: .7; }
+.hostel-mark { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--ink); color: #fff; }
+.hostel-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.hostel-controls select, .hostel-controls input { min-width: 140px; }
+.hostel-body { margin-top: 14px; }
+.hostel-stats { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
+.hostel-tile { text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.meal-minis { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.meal-mini { padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.45); border: 1px solid var(--rule); }
+.meal-mini .big { font: 600 26px var(--font-display); }
+.meal-counts { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 14px; margin: 6px 0 10px; }
+.menu-table input { width: 100%; min-width: 120px; }
+.att-btns { display: inline-flex; gap: 4px; }
+.att-btn { min-width: 40px; min-height: 36px; border-radius: 9px; border: 1px solid var(--rule); background: rgba(255,255,255,.6); font: 600 13px var(--font-mono); cursor: pointer; color: inherit; }
+.att-btn.active.att-present { background: var(--paid-green); color: #fff; border-color: var(--paid-green); }
+.att-btn.active.att-late { background: var(--partial-amber); color: #fff; border-color: var(--partial-amber); }
+.att-btn.active.att-absent { background: var(--due-red); color: #fff; border-color: var(--due-red); }
+.att-btn.active.att-leave { background: var(--bed-booked); color: #fff; border-color: var(--bed-booked); }
+.gate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.gate-grid > .card { margin: 0; }
+.found-pass { margin: 10px 0; padding: 10px 12px; border-radius: 12px; background: rgba(51,139,121,.1); }
+.warn-card { border-left: 4px solid var(--due-red) !important; }
+code, .pass-code { font-family: var(--font-mono); font-weight: 600; letter-spacing: 1px; }
+.pass-code { font-size: 18px; }
+
+/* tenant hostel */
+.t-sub { font-family: var(--font-display); font-size: 20px; margin: 18px 0 8px; }
+.tmeal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.tmeal-grid .card { margin: 0; }
+.tmeal { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--rule); }
+.tmeal:first-of-type { border-top: 0; }
+.tmeal-act { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.tmeal-act .rate .chip-btn { padding: 4px 8px; }
+.notice-item { padding: 8px 0; border-top: 1px solid var(--rule); }
+.notice-item:first-child { border-top: 0; }
+.notice-item p { margin: 4px 0 0; white-space: pre-wrap; }
+.att-history { display: flex; flex-wrap: wrap; gap: 5px; }
+.att-day { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; font: 600 11px var(--font-mono); color: #fff; background: rgba(var(--c1), .3); }
+.att-day.att-present { background: var(--paid-green); }
+.att-day.att-late { background: var(--partial-amber); }
+.att-day.att-absent { background: var(--due-red); }
+.att-day.att-leave { background: var(--bed-booked); }
+
+@media (max-width: 860px) {
+  .occ-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .occ-floor { grid-template-columns: 1fr; gap: 4px; }
+  .occ-floor-label { padding-top: 0; }
+  .occ-rooms { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .gate-grid { grid-template-columns: 1fr; }
+  body.hostel-mode .main { padding: 14px 14px 40px; }
+  .hostel-controls { width: 100%; }
+  .hostel-controls select, .hostel-controls input { flex: 1 1 140px; min-width: 0; }
+  .hostel-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .filter-line { align-items: stretch; }
+  .filter-line > * { flex: 1 1 auto; }
+  .tmeal { flex-direction: column; align-items: flex-start; }
+  .tmeal-act { justify-content: flex-start; }
+}

@@ -16,6 +16,12 @@ Live: https://rent-ledger.up.railway.app
 - **Move-in/move-out** records (checklists, meter readings, photos), security deposits held separately from income, and **deposit settlement** with line-by-line deductions.
 - **Rent Ledger AI:** ask questions in plain English or Hindi. It can also prepare reminders, maintenance tasks and expenses for you to approve. It never changes payments or balances. Without an AI key it runs in a rule-based "basic mode".
 - **Insights:** a cash-flow forecast labelled as an estimate (with its assumptions), and review alerts for possible duplicate payments, unusual adjustments and unmatched money.
+- **Beds and occupancy:** rooms with one or more beds (sharing), notice and moving beds, and an occupancy view of every bed.
+- **Leads and bookings:** an enquiry pipeline, beds held for a joining date, and one-tap move-in.
+- **Dues engine:** packages (laundry, mess…), shared-room bill splits, late fees, discounts with a deadline, and paying dues from the deposit or advance.
+- **WhatsApp links (free):** reminder and receipt messages open in WhatsApp ready to send; receipts show the balance still due.
+- **Property page (free):** a public page for each property at `/p/<name>`; enquiries arrive as leads.
+- **Hostel window:** food menu and meals, attendance and leave, gate passes and the entry/exit register, staff tasks, assets and notices, plus a Hostel tab for tenants.
 - **Team:** several landlords can each have their own separate organisation, and an owner can invite property managers with limited permissions. Sensitive changes go to an audit log.
 
 **Tenants**
@@ -62,7 +68,7 @@ cd rent-ledger-source
 npm test
 ```
 
-There are 93 tests covering authentication and sessions, the ledger (allocation, partial payments, credit, reversals, immutability), the db.json importer, leases and schedules, reconciliation, reports, reminders and the outbox, maintenance, expenses, deposit settlement, insights, and the assistant (basic mode plus mocked Anthropic and OpenAI-compatible providers).
+There are 149 tests covering authentication and sessions, the ledger (allocation, partial payments, credit, reversals, immutability), the db.json importer, leases and schedules, reconciliation, reports, reminders and the outbox, maintenance, expenses, deposit settlement, insights, and the assistant (basic mode plus mocked Anthropic and OpenAI-compatible providers).
 
 The tests use a temporary data folder and never send real messages, call real AI providers or make real payments. GitHub Actions runs them on every push (`.github/workflows/ci.yml`).
 

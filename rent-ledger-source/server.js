@@ -34,7 +34,7 @@ const TENANT_ALLOWED = [
 // authenticate before the body is read.
 const LARGE_BODY_PATHS = [
   /^\/api\/tenant\/(rent|electricity|gas)\/[^/]+\/receipt$/, /^\/api\/documents$/, /^\/api\/tenant\/maintenance(\/[^/]+\/attachments)?$/,
-  /^\/api\/maintenance\/[^/]+\/attachments$/, /^\/api\/reconciliation\/imports$/, /^\/api\/leases\/extract$/, /^\/api\/leases\/[^/]+\/documents$/,
+  /^\/api\/maintenance\/[^/]+\/attachments$/, /^\/api\/reconciliation\/imports$/, /^\/api\/sites\/[^/]+\/photos$/, /^\/api\/leases\/extract$/, /^\/api\/leases\/[^/]+\/documents$/,
 ];
 
 function createServer({ dataDir = config.dataDir } = {}) {
@@ -106,6 +106,7 @@ function createServer({ dataDir = config.dataDir } = {}) {
     if (err instanceof v.ValidationError) return res.status(400).json({ error: err.message });
     if (err.expose && err.status && !err.type) return res.status(err.status).json({ error: err.message });
     if (/UNIQUE constraint failed: tenants\.room_id/.test(err.message)) return res.status(409).json({ error: "This room already has an active tenant." });
+    if (/UNIQUE constraint failed: tenants\.bed_id/.test(err.message)) return res.status(409).json({ error: "Someone already lives in that bed." });
     if (/UNIQUE constraint failed: leases\.tenant_id/.test(err.message)) return res.status(409).json({ error: "This tenant already has an active lease." });
     if (/FOREIGN KEY constraint failed/.test(err.message)) return res.status(409).json({ error: "This record is linked to other records and can't be changed this way." });
     log.error("unhandled error", { requestId: req.id, method: req.method, path: req.path, error: err });
@@ -118,7 +119,7 @@ function createServer({ dataDir = config.dataDir } = {}) {
 
 // Modules added stage by stage; each registers its own routes.
 const NATIVE_APP_ORIGINS = ["capacitor://localhost", "https://localhost", "http://localhost"];
-const OPTIONAL_MODULES = ["ledger", "leases", "reconciliation", "documents", "notifications", "maintenance", "expenses", "finance", "insights", "tenancy", "assistant"]
+const OPTIONAL_MODULES = ["ledger", "leases", "reconciliation", "documents", "notifications", "maintenance", "expenses", "finance", "insights", "tenancy", "assistant", "units", "dues", "leads", "site", "hostel"]
   .filter((name) => fs.existsSync(path.join(__dirname, "routes", `${name}.js`)));
 
 function start({ port = config.port } = {}) {

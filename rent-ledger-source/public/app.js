@@ -1132,6 +1132,15 @@ function renderDashboard() {
   `;
 }
 
+// Shared rooms: "partial" when some beds are taken and some are free.
+function roomStamp(r) {
+  if (r.electricityOnly || r.status === 'archived') return r.status;
+  const beds = r.bedCount || 1;
+  const taken = beds - (r.freeBeds ?? (r.status === 'occupied' ? 0 : beds));
+  if (beds > 1 && taken > 0 && taken < beds) return 'partial';
+  return r.status;
+}
+
 // ---------- building view ----------
 function renderBuildingView() {
   const b = cache.buildings.find((x) => x.id === state.buildingId);
@@ -1159,7 +1168,9 @@ function renderBuildingView() {
           <div class="form-field"><label>Room / unit label *</label><input name="label" required placeholder="e.g. 1A or Room 3" /></div>
           <div class="form-field"><label>Monthly rent (₹)</label><input name="monthlyRent" type="number" min="0" step="0.01" placeholder="e.g. 12000" /></div>
           <div class="form-field"><label>Security deposit (₹)</label><input name="deposit" type="number" min="0" step="0.01" placeholder="e.g. 24000" /></div>
-          <div class="form-field" style="grid-column: span 2;"><label>Notes</label><input name="notes" placeholder="Optional" /></div>
+          <div class="form-field"><label>Beds in this room</label><input name="beds" type="number" min="1" max="30" value="1" /><small class="muted">1 for a private room or flat, 2–3+ for sharing</small></div>
+          <div class="form-field"><label>Tags</label><input name="tags" placeholder="e.g. AC, Attached washroom, Girls" /></div>
+          <div class="form-field" style="grid-column: span 3;"><label>Notes</label><input name="notes" placeholder="Optional" /></div>
         </div>
         <div class="form-actions">
           <button class="btn" type="submit">Save room</button>
@@ -1211,10 +1222,11 @@ function renderBuildingView() {
         <div class="room-grid">
           ${rooms.map((r) => `
             <div class="room-card" data-nav="room" data-id="${r.id}">
-              <div class="rc-status"><span class="stamp ${r.status}">${r.electricityOnly ? 'owner' : r.status}</span></div>
+              <div class="rc-status"><span class="stamp ${roomStamp(r)}">${r.electricityOnly ? 'owner' : roomStamp(r)}</span></div>
               <div class="rc-floor">Floor ${r.floorNumber}</div>
               <div class="rc-label">${esc(r.label)}</div>
               <div class="rc-rent">${r.electricityOnly ? 'Electricity only' : `${fmtMoney(r.monthlyRent)}/mo`}</div>
+              ${!r.electricityOnly && (r.bedCount || 1) > 1 ? `<div class="rc-beds">${esc(r.sharing)} · ${(r.bedCount || 0) - (r.freeBeds || 0)}/${r.bedCount} beds taken</div>` : ''}
             </div>
           `).join("")}
         </div>
@@ -1247,7 +1259,11 @@ function renderRoomView() {
   const r = cache.rooms.find((x) => x.id === state.roomId);
   if (!r) { state.view = "dashboard"; return renderDashboard(); }
   const b = cache.buildings.find((x) => x.id === r.buildingId);
-  const tenant = cache.tenants.find((t) => t.roomId === r.id && t.active);
+  // Shared rooms have several tenants; the one picked on the Tenant tab is
+  // used for the rent, electricity and gas tabs too.
+  const roomTenants = cache.tenants.filter((t) => t.roomId === r.id && t.active);
+  if (state.roomTenantPick?.roomId !== r.id) state.roomTenantPick = { roomId: r.id, tenantId: null };
+  const tenant = roomTenants.find((t) => t.id === state.roomTenantPick.tenantId) || roomTenants[0];
   if (r.electricityOnly && !["electricity", "gas"].includes(state.roomTab)) state.roomTab = 'electricity';
 
   const tabs = r.electricityOnly ? `
@@ -1273,8 +1289,9 @@ function renderRoomView() {
 
   return `
     <div class="nav-crumb" data-nav="building" data-id="${b ? b.id : ""}">← ${esc(b ? b.name : "Building")}</div>
-    <div class="page-title">${esc(r.label)} <span class="stamp ${r.status}" style="font-size:11px; vertical-align:middle; margin-left:8px;">${r.electricityOnly ? 'owner floor' : r.status}</span></div>
-    <div class="page-sub">${r.electricityOnly ? `Floor ${r.floorNumber} · owner residence · electricity tracking only` : `Floor ${r.floorNumber} · ${fmtMoney(r.monthlyRent)}/mo rent · ${fmtMoney(r.deposit)} deposit`}</div>
+    <div class="page-title">${esc(r.label)} <span class="stamp ${roomStamp(r)}" style="font-size:11px; vertical-align:middle; margin-left:8px;">${r.electricityOnly ? 'owner floor' : roomStamp(r)}</span></div>
+    <div class="page-sub">${r.electricityOnly ? `Floor ${r.floorNumber} · owner residence · electricity tracking only` : `Floor ${r.floorNumber} · ${esc(r.sharing || 'Private')} · ${fmtMoney(r.monthlyRent)}/mo rent${(r.bedCount || 1) > 1 ? ' per bed' : ''} · ${fmtMoney(r.deposit)} deposit${(r.tags || []).length ? ` · ${r.tags.map(esc).join(', ')}` : ''}`}</div>
+    ${!r.electricityOnly && roomTenants.length > 1 && state.roomTab !== 'tenant' ? `<div class="chip-row" role="group" aria-label="Tenant">${roomTenants.map((t) => `<button type="button" class="chip-btn ${t.id === tenant?.id ? 'active' : ''}" data-action="pick-room-tenant" data-id="${t.id}">${esc(t.name)}${t.bedLabel ? ` · ${esc(t.bedLabel)}` : ''}</button>`).join('')}</div>` : ''}
     ${tabs}
     <div class="tab-panel">${body}</div>
   `;
@@ -1293,13 +1310,16 @@ function tenantLoginCard(tenant) {
   return `<div class="card"><h3>Tenant login</h3>${body}</div>`;
 }
 
-function renderTenantTab(r, tenant) {
-  if (!tenant) {
-    const form = state.forms.addTenant ? `
+function addTenantForm(r) {
+  const free = (r.beds || []).filter((b) => b.status === 'vacant' || b.status === 'booked');
+  const chosen = state.addTenantBedId && free.some((b) => b.id === state.addTenantBedId) ? state.addTenantBedId : (free.find((b) => b.status === 'vacant') || free[0])?.id;
+  const bedField = free.length > 1 ? `<div class="form-field"><label>Bed *</label><select name="bedId">${free.map((b) => `<option value="${b.id}" ${b.id === chosen ? 'selected' : ''}>${esc(b.label)} · ${fmtMoney(b.monthlyRent)}${b.status === 'booked' ? ' (booked)' : ''}</option>`).join('')}</select></div>` : (chosen ? `<input type="hidden" name="bedId" value="${chosen}">` : '');
+  return `
       <div class="card">
         <h3>Add tenant</h3>
         <form data-submit="add-tenant" data-room-id="${r.id}">
           <div class="form-grid">
+            ${bedField}
             <div class="form-field"><label>Full name *</label><input name="name" required /></div>
             <div class="form-field"><label>Mobile number *</label><input name="mobile" required placeholder="10-digit mobile" /></div>
             <div class="form-field"><label>Alternate mobile</label><input name="altMobile" /></div>
@@ -1315,8 +1335,15 @@ function renderTenantTab(r, tenant) {
           </div>
         </form>
       </div>
-    ` : "";
+    `;
+}
+
+function renderTenantTab(r, tenant) {
+  const beds = window.RL_EXT?.bedsCard ? RL_EXT.bedsCard(r, tenant) : '';
+  const form = state.forms.addTenant ? addTenantForm(r) : "";
+  if (!tenant) {
     return `
+      ${beds}
       <div class="card">
         <div class="empty-state">
           <div class="es-icon">🔑</div>
@@ -1330,6 +1357,8 @@ function renderTenantTab(r, tenant) {
   }
 
   return `
+    ${beds}
+    ${form}
     <div class="card">
       <div class="tenant-card">
         <div>
@@ -1339,6 +1368,8 @@ function renderTenantTab(r, tenant) {
           ${tenant.email ? `<div class="t-detail"><span class="lbl">Email</span>${esc(tenant.email)}</div>` : ""}
           ${tenant.idProofType ? `<div class="t-detail"><span class="lbl">ID proof</span>${esc(tenant.idProofType)} ${esc(tenant.idProofNumber || "")}</div>` : ""}
           <div class="t-detail"><span class="lbl">Moved in</span>${esc(tenant.moveInDate || "—")}</div>
+          ${tenant.bedLabel && (r.bedCount || 1) > 1 ? `<div class="t-detail"><span class="lbl">Bed</span>${esc(tenant.bedLabel)}</div>` : ""}
+          ${tenant.leavingOn ? `<div class="t-detail"><span class="lbl">Leaving on</span><b style="color:var(--partial-amber)">${esc(tenant.leavingOn)}</b></div>` : ""}
           ${tenant.notes ? `<div class="t-detail"><span class="lbl">Notes</span>${esc(tenant.notes)}</div>` : ""}
         </div>
         <button class="btn danger small" data-action="move-out" data-id="${tenant.id}">Mark moved out</button>
@@ -1944,8 +1975,10 @@ async function handleSubmit(form) {
       state.forms.addOwnerFloor = false;
       toast('Owner electricity-only floor added');
     } else if (kind === "add-tenant") {
-      await api("POST", "/api/tenants", { ...data, roomId: form.dataset.roomId });
+      const added = await api("POST", "/api/tenants", { ...data, roomId: form.dataset.roomId });
       state.forms.addTenant = false;
+      state.addTenantBedId = null;
+      state.roomTenantPick = { roomId: form.dataset.roomId, tenantId: added.id };
       toast("Tenant added");
     } else if (kind === "add-rent") {
       await api("POST", "/api/rent", { ...data, roomId: form.dataset.roomId, tenantId: form.dataset.tenantId || null });

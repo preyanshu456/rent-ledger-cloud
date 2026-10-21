@@ -10,6 +10,7 @@ const delivery = require("./delivery");
 const { getOrg } = require("./accounts");
 const { notifyStaff } = require("./notify");
 const { audit } = require("./audit");
+const dues = require("./dues");
 
 function todayForOrg(db) {
   return (orgId) => localDate(db.get("SELECT time_zone FROM organizations WHERE id = ?", orgId)?.time_zone || "Asia/Kolkata");
@@ -17,11 +18,19 @@ function todayForOrg(db) {
 
 function runHourly(db, { log } = {}) {
   const today = todayForOrg(db);
-  const out = { charges: 0, leasesEnded: 0, reminders: 0, anonymized: 0, backup: null };
+  const out = { charges: 0, leasesEnded: 0, reminders: 0, anonymized: 0, lateFees: 0, packages: 0, discountsExpired: 0, backup: null };
   out.leasesEnded = 0;
   out.charges = schedules.generateDueCharges(db, today);
   out.leasesEnded = schedules.expireLeases(db, today);
   for (const org of db.all("SELECT id FROM organizations")) {
+    // Dues engine: monthly packages, late fees, discounts past their date.
+    // One organisation's problem never stops the others.
+    try {
+      out.packages += dues.runMonthlyPackages(db, org.id, today(org.id));
+      const lf = dues.applyLateFees(db, org.id, today(org.id));
+      out.lateFees += lf.created + lf.increased;
+      out.discountsExpired += dues.settleDiscounts(db, org.id, today(org.id)).expired;
+    } catch (error) { log?.error("dues job failed", { orgId: org.id, error }); }
     const o = getOrg(db, org.id);
     const s = o.settings.reminders;
     if (s.enabled) {
@@ -44,7 +53,7 @@ function runHourly(db, { log } = {}) {
     }
   }
   out.backup = db.maybeBackup();
-  if (out.charges || out.reminders || out.anonymized || out.leasesEnded) log?.info("hourly jobs", out);
+  if (out.charges || out.reminders || out.anonymized || out.leasesEnded || out.lateFees || out.packages || out.discountsExpired) log?.info("hourly jobs", out);
   return out;
 }
 
