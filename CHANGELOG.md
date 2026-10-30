@@ -1,5 +1,11 @@
 # Changelog
 
+## Rent Ledger or Hostel after sign-in
+
+- Owners and managers who can use the Hostel now choose **Rent Ledger** or **Hostel** right after signing in. The choice lasts for that sign-in; the next sign-in asks again.
+- The Hostel opens as its own full-screen app with **Switch to Rent Ledger** and **Sign out** at the top. Picking Hostel from the Rent Ledger menu switches over.
+- Managers without Hostel permission, and tenants, go straight in as before.
+
 ## Beds, occupancy, leads and bookings, dues engine, property page and Hostel window (October 2026)
 Features modelled on RentOk, built without any paid service.
 - **Beds under rooms.** A room can have several beds (double, triple sharing…), each with its own rent if needed, and an active tenant holds one bed. Existing rooms each get one bed ("Bed 1") and their tenant is put on it, so nothing changes for single rooms. Beds can be added, renamed, priced, marked "not for rent" and (without history) deleted. Rooms can have tags (AC, Attached washroom, Girls only…).

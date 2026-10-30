@@ -552,6 +552,9 @@ addEventListener('popstate', (event) => {
 
 async function render() {
   const seq = ++ui.renderSeq;
+ // Right after signing in, owners and managers choose Rent Ledger or Hostel.
+ if (session && window.RL_EXT?.interfaceGate && await RL_EXT.interfaceGate()) return;
+ if (seq !== ui.renderSeq) return;
   const pageKey = currentPageKey();
   const tabKey = `${pageKey}:${state.roomTab}`;
   const pageChanged = pageKey !== ui.pageKey;

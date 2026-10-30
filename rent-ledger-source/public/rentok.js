@@ -466,7 +466,7 @@
       <div class="hostel-title"><span class="hostel-mark">${X.ICONS.hostel ? `<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${X.ICONS.hostel}</svg>` : ''}</span><div><b>Hostel</b><small>${h(o?.building?.name || '')}</small></div></div>
       <div class="hostel-controls"><select data-ext-change="state" data-key="hostel.buildingId" aria-label="Property">${buildingOptions(H.buildingId)}</select><input type="date" value="${h(hDate())}" data-ext-change="state" data-key="hostel.date" aria-label="Date">
       ${!inWindow && !isNative() ? '<button class="btn small secondary" data-action="hostel-new-window" title="Open the Hostel in its own browser window">Open in new window ↗</button>' : ''}
-      ${inWindow ? '' : '<button class="btn small secondary" data-nav="dashboard">← Back to Rent Ledger</button>'}</div></header>`;
+      ${inWindow ? '' : '<button class="btn small secondary" data-action="switch-interface" data-mode="rent" title="Switch to rent, bills and tenants">Switch to Rent Ledger</button><button class="btn small secondary" data-action="logout">Sign out</button>'}</div></header>`;
     const counts = o ? { leave: o.pendingLeaves + o.pendingPasses || '', tasks: o.tasksDue || '' } : {};
     const tb = tabs('hostel', 'tab', [['today', 'Today'], ['food', 'Food'], ['attendance', 'Attendance'], ['leave', 'Leave & passes', counts.leave], ['gate', 'Gate register'], ['tasks', 'Tasks', counts.tasks], ['assets', 'Assets'], ['notices', 'Notices'], ['settings', 'Settings']]);
     if (!H.buildingId) return `<div class="hostel-shell">${top}${card('', '<p class="muted">Add a property first.</p>')}</div>`;
@@ -647,6 +647,62 @@
     state.view = 'hostel';
     document.title = 'Hostel · Rent Ledger';
   }
+ // ---------- Rent Ledger or Hostel: chosen right after signing in ----------
+ // The choice is kept for this sign-in only, so the question comes back the
+ // next time someone signs in. Switch any time from the top of either one.
+ const MODE_KEY = 'rentLedgerInterface';
+ const signInTag = () => String(session?.token || '').slice(-12);
+ const readMode = () => { try { const m = JSON.parse(localStorage.getItem(MODE_KEY) || 'null'); return m && m.t === signInTag() && ['rent', 'hostel'].includes(m.mode) ? m.mode : null; } catch { return null; } };
+ const saveMode = (mode) => { X.mode = mode; try { localStorage.setItem(MODE_KEY, JSON.stringify({ t: signInTag(), mode })); } catch {} };
+ X.mode = null;
+ X.interfaceGate = async () => {
+ const role = session?.user?.role;
+ if (role !== 'owner' && role !== 'manager') return false;
+ if (document.body.classList.contains('hostel-window')) { X.mode = 'hostel'; state.view = 'hostel'; return false; }
+ if (role === 'manager' && !X.me) { try { X.me = await api('GET', '/api/auth/me'); } catch { X.me = { permissions: [] }; } }
+ if (!can('hostel.manage')) { X.mode = 'rent'; if (state.view === 'hostel') state.view = 'dashboard'; return false; }
+ if (!X.mode) X.mode = readMode();
+ if (!X.mode) { paintChooser(); return true; }
+ if (X.mode === 'hostel') state.view = 'hostel';
+ else if (state.view === 'hostel') saveMode('hostel'); // Hostel picked from the Rent Ledger menu
+ return false;
+ };
+ const LEDGER_ICON = '<path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11M9 8h6M9 11h4"/>';
+ const svg = (paths) => `<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+ function paintChooser() {
+ const name = session.user.name ? String(session.user.name).split(' ')[0] : '';
+ const choice = (mode, title, text, points, icon) => `<button type="button" class="mode-card" data-pick-mode="${mode}"><span class="mode-icon">${svg(icon)}</span><b>${title}</b><span class="mode-text">${text}</span><ul>${points.map((p) => `<li>${p}</li>`).join('')}</ul><span class="mode-go">Open ${title} →</span></button>`;
+ const app = document.getElementById('app');
+ document.body.classList.remove('hostel-mode');
+ document.body.classList.add('mode-picking');
+ app.innerHTML = `<main class="mode-screen"><div class="mode-pick">
+ <div class="mode-brand">Rent Ledger</div>
+ <p class="kicker">${name ? `WELCOME, ${h(name.toUpperCase())}` : 'WELCOME'}</p>
+ <h1>What do you want to open?</h1>
+ <p class="mode-sub">You can switch between them any time.</p>
+ <div class="mode-cards">
+ ${choice('rent', 'Rent Ledger', 'Rent, bills and tenants', ['Rooms, beds and occupancy', 'Rent, electricity and gas bills', 'Payments, receipts and reminders', 'Leads, bookings and reports'], LEDGER_ICON)}
+ ${choice('hostel', 'Hostel', 'Day-to-day hostel work', ['Food menu and meal counts', 'Attendance and leave', 'Gate passes and visitors', 'Tasks, assets and notices'], X.ICONS.hostel)}
+ </div>
+ <button type="button" class="mode-signout" data-mode-logout>Sign out</button>
+ </div></main>`;
+ app.querySelectorAll('[data-pick-mode]').forEach((btn) => { btn.onclick = () => {
+ const mode = btn.dataset.pickMode;
+ saveMode(mode);
+ state.view = mode === 'hostel' ? 'hostel' : 'dashboard';
+ state.forms = {};
+ document.body.classList.remove('mode-picking');
+ render();
+ }; });
+ app.querySelector('[data-mode-logout]').onclick = () => logout();
+ }
+ X.actions['switch-interface'] = (el) => {
+ const mode = el.dataset.mode === 'hostel' ? 'hostel' : 'rent';
+ saveMode(mode);
+ state.view = mode === 'hostel' ? 'hostel' : 'dashboard';
+ state.forms = {};
+ };
+
   const baseAfterRender = X.afterRender;
   X.afterRender = () => {
     baseAfterRender?.();
