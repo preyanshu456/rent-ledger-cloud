@@ -1,11 +1,12 @@
 const { test, before, after } = require("node:test");
 const assert = require("node:assert/strict");
-const { setupEnv, startServer, seedOwnerWorld } = require("./helpers");
+const { setupEnv, startServer, seedOwnerWorld, tenantLogin } = require("./helpers");
 
-setupEnv({ PLATFORM_ADMIN_CONTACTS: "manager@example.com,second-manager@example.com", OWNER_SIGNUP: "open" });
+setupEnv({ OWNER_SIGNUP: "open" });
 let ctx;
 let manager;
 let secondManager;
+let tenantSession;
 let owner;
 let targetRoom;
 let targetBuilding;
@@ -14,6 +15,7 @@ let newTenant;
 before(async () => {
   ctx = await startServer();
   manager = await seedOwnerWorld(ctx, { ownerContact: "manager@example.com" });
+  tenantSession = await tenantLogin(ctx, manager);
   const signup = await ctx.request("POST", "/api/auth/signup", {
     ip: ctx.freshIp(),
     body: { name: "Second Owner", contact: "second-owner@example.com", password: "owner-pass-2", role: "owner" },
@@ -32,7 +34,7 @@ before(async () => {
 
 after(() => ctx.close());
 
-test("allowlisted manager can view and manage selected owner data only through scoped routes", async () => {
+test("owner and manager accounts can view and manage selected owner data through scoped routes", async () => {
   const listed = await ctx.request("GET", "/api/platform-admin/organizations", { token: manager.owner });
   assert.equal(listed.status, 200, listed.text);
   assert.equal(listed.json.length, 3);
@@ -41,6 +43,8 @@ test("allowlisted manager can view and manage selected owner data only through s
   assert.equal(detail.status, 200, detail.text);
   assert.equal(detail.json.organization.id, targetId);
   assert.equal(detail.json.rooms[0].id, targetRoom.id);
+  const tenantResponse = await ctx.request("GET", "/api/platform-admin/organizations/" + targetId, { token: tenantSession });
+  assert.equal(tenantResponse.status, 403);
   const secondManagerDetail = await ctx.request("GET", `/api/platform-admin/organizations/${targetId}`, { token: secondManager.token });
   assert.equal(secondManagerDetail.status, 200, secondManagerDetail.text);
   assert.ok(ctx.db.get("SELECT 1 FROM audit_log WHERE org_id = ? AND actor_user_id = ? AND actor_role = 'platform_admin'", targetId, manager.ownerUser.id));
@@ -81,7 +85,7 @@ test("allowlisted manager can view and manage selected owner data only through s
   assert.equal(targetBills.status, 200);
   assert.equal(targetBills.json[0].amount, 240);
 
-  assert.equal((await ctx.request("GET", `/api/platform-admin/organizations/${targetId}`, { token: owner.token })).status, 403);
+  assert.equal((await ctx.request("GET", "/api/platform-admin/organizations/" + targetId, { token: owner.token })).status, 200);
   assert.equal((await ctx.request("GET", `/api/tenants/${newTenant.id}`, { token: manager.owner })).status, 404);
 
   const movedOut = await ctx.request("POST", `/api/platform-admin/organizations/${targetId}/tenants/${newTenant.id}/move-out`, {
@@ -99,7 +103,8 @@ test("allowlisted manager can view and manage selected owner data only through s
   assert.ok(ctx.db.get("SELECT 1 FROM audit_log WHERE org_id = ? AND actor_role = 'platform_admin' AND action = 'platform_admin.electricity_bill_created'", targetId));
 });
 
-test("a regular account cannot use platform routes even with a valid session", async () => {
+test("unauthenticated requests cannot use platform routes", async () => {
   const response = await ctx.request("GET", "/api/platform-admin/organizations", { token: owner.token });
-  assert.equal(response.status, 403);
+  assert.equal(response.status, 200);
+  assert.equal((await ctx.request("GET", "/api/platform-admin/organizations")).status, 401);
 });
